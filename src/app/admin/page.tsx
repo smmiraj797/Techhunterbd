@@ -204,7 +204,7 @@ export default function AdminDashboardPage() {
   };
 
   // Storage Keys for multi-tab and storefront synchronization
-  const STORAGE_PRODUCTS_KEY = 'techhunter_custom_products';
+  const STORAGE_PRODUCTS_KEY = 'techhunter_store_products';
   const STORAGE_CATEGORIES_KEY = 'techhunter_custom_categories';
 
   // ─── DYNAMIC CATEGORIES & BRANDS REGISTRY ──────────────────────────────────
@@ -499,6 +499,7 @@ export default function AdminDashboardPage() {
         localStorage.setItem(STORAGE_CATEGORIES_KEY, JSON.stringify(updatedCategories));
       }
       if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('storage'));
         window.dispatchEvent(new Event('storage_update'));
         window.dispatchEvent(new StorageEvent('storage', { key: STORAGE_PRODUCTS_KEY }));
       }
@@ -864,6 +865,8 @@ export default function AdminDashboardPage() {
               shortDescription: isMod ? p.shortDescription : formShortDesc,
               description: isMod ? p.description : formDescription,
               images: isMod ? p.images : allImages,
+              featuredImage: isMod ? (p.featuredImage || p.images?.[0] || cleanFeatured) : cleanFeatured,
+              image: isMod ? (p.image || p.images?.[0] || cleanFeatured) : cleanFeatured,
               specs: isMod ? p.specs : specsRecord,
               variants: isMod ? p.variants : variantsList,
               isFeatured: isMod ? p.isFeatured : formIsFeatured,
@@ -899,6 +902,8 @@ export default function AdminDashboardPage() {
         brand: formBrand,
         category: formCategory,
         subcategory: formSubcategory,
+        featuredImage: cleanFeatured,
+        image: cleanFeatured,
         images: allImages.length > 0 ? allImages : ['/products/placeholder.jpg'],
         price: Number(formPrice),
         originalPrice: Number(formOriginalPrice),

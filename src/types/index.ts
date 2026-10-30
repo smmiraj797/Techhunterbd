@@ -18,6 +18,8 @@ export interface Product {
   category: string;
   subcategory: string;
   images: string[];
+  image?: string;
+  featuredImage?: string;
   price: number;
   originalPrice: number;
   discount: number; // percentage, e.g. 9 = 9%

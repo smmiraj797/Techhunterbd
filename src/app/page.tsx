@@ -47,8 +47,30 @@ import { brands } from '@/data/brands';
 import { formatPrice, formatDiscount } from '@/lib/utils';
 import { Product } from '@/types';
 
-const STORAGE_PRODUCTS_KEY = 'techhunter_custom_products';
+const STORAGE_PRODUCTS_KEY = 'techhunter_store_products';
 const STORAGE_CATEGORIES_KEY = 'techhunter_custom_categories';
+
+// Helper to extract the highest priority valid image from a product
+const getProductImage = (p?: Product | null): string | null => {
+  if (!p) return null;
+  if (p.featuredImage && typeof p.featuredImage === 'string' && p.featuredImage.trim()) {
+    return p.featuredImage.trim();
+  }
+  if (p.image && typeof p.image === 'string' && p.image.trim()) {
+    return p.image.trim();
+  }
+  if (
+    p.images &&
+    Array.isArray(p.images) &&
+    p.images.length > 0 &&
+    p.images[0] &&
+    typeof p.images[0] === 'string' &&
+    p.images[0].trim()
+  ) {
+    return p.images[0].trim();
+  }
+  return null;
+};
 
 // Map category icons to Lucide components
 const categoryIconMap: Record<string, React.ElementType> = {
@@ -79,8 +101,15 @@ export default function HomePage() {
           const parsed = JSON.parse(storedProds);
           if (Array.isArray(parsed) && parsed.length > 0) {
             setAllProducts(parsed);
+          } else {
+            localStorage.setItem(STORAGE_PRODUCTS_KEY, JSON.stringify(products));
+            setAllProducts(products);
           }
+        } else {
+          localStorage.setItem(STORAGE_PRODUCTS_KEY, JSON.stringify(products));
+          setAllProducts(products);
         }
+
         const storedCats = localStorage.getItem(STORAGE_CATEGORIES_KEY);
         if (storedCats) {
           const parsedCats = JSON.parse(storedCats);
@@ -110,17 +139,17 @@ export default function HomePage() {
 
     loadFromStorage();
 
-    const handleStorageUpdate = () => {
-      loadFromStorage();
-    };
+      const handleStorageChange = () => {
+        loadFromStorage();
+      };
 
-    window.addEventListener('storage_update', handleStorageUpdate);
-    window.addEventListener('storage', handleStorageUpdate);
-    return () => {
-      window.removeEventListener('storage_update', handleStorageUpdate);
-      window.removeEventListener('storage', handleStorageUpdate);
-    };
-  }, []);
+      window.addEventListener('storage', handleStorageChange);
+      window.addEventListener('storage_update', handleStorageChange);
+      return () => {
+        window.removeEventListener('storage', handleStorageChange);
+        window.removeEventListener('storage_update', handleStorageChange);
+      };
+    }, []);
 
   const dynamicCategories = useMemo(() => {
     return allCategories.map((cat) => ({
@@ -351,7 +380,7 @@ export default function HomePage() {
     // Tab filter
     switch (activeTab) {
       case 'hot':
-        return list.filter((p) => p.isFeatured || p.isNew);
+        return list.filter((p) => p.isFeatured || p.isNew || Boolean(p.badge) || !p.id.match(/^prod-0\d\d$/));
       case 'top':
         return [...list].sort((a, b) => b.rating - a.rating);
       case 'warranty':
@@ -442,11 +471,10 @@ export default function HomePage() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onFocus={() => setIsSearchFocused(true)}
-                className={`w-full pl-10 pr-10 py-2.5 rounded-full text-sm font-medium transition-all outline-none ${
-                  isDark
+                className={`w-full pl-10 pr-10 py-2.5 rounded-full text-sm font-medium transition-all outline-none ${isDark
                     ? 'bg-slate-900/90 border border-slate-700/80 text-white placeholder-slate-500 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20'
                     : 'bg-slate-100 border border-slate-300 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20'
-                }`}
+                  }`}
               />
               {searchQuery && (
                 <button
@@ -461,9 +489,8 @@ export default function HomePage() {
             {/* Predictive Live Search Dropdown */}
             {isSearchFocused && searchQuery && (
               <div
-                className={`absolute left-0 right-0 mt-2 rounded-2xl shadow-2xl border p-3 z-50 max-h-96 overflow-y-auto ${
-                  isDark ? 'bg-slate-900/95 border-slate-700 backdrop-blur-xl' : 'bg-white border-slate-200'
-                }`}
+                className={`absolute left-0 right-0 mt-2 rounded-2xl shadow-2xl border p-3 z-50 max-h-96 overflow-y-auto ${isDark ? 'bg-slate-900/95 border-slate-700 backdrop-blur-xl' : 'bg-white border-slate-200'
+                  }`}
               >
                 <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 px-3 py-1 flex justify-between items-center">
                   <span>Search Results ({searchResults.length})</span>
@@ -481,147 +508,150 @@ export default function HomePage() {
                         className="p-2.5 hover:bg-slate-800/40 rounded-xl cursor-pointer flex items-center justify-between gap-3 transition-colors"
                       >
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-lg bg-slate-800 flex items-center justify-center font-black text-cyan-400 text-xs border border-slate-700">
-                            {item.brand[0]}
+                            <div className="w-10 h-10 rounded-lg bg-slate-800 flex items-center justify-center font-black text-cyan-400 text-xs border border-slate-700 overflow-hidden flex-shrink-0">
+                              {getProductImage(item) ? (
+                                <img
+                                  src={getProductImage(item)!}
+                                  alt={item.name}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                item.brand[0]
+                              )}
+                            </div>
+                            <div>
+                              <p className="text-sm font-semibold line-clamp-1">{item.name}</p>
+                              <span className="text-[11px] text-slate-400">{item.category} • {item.warranty}</span>
+                            </div>
                           </div>
-                          <div>
-                            <p className="text-sm font-semibold line-clamp-1">{item.name}</p>
-                            <span className="text-[11px] text-slate-400">{item.category} • {item.warranty}</span>
+                          <div className="text-right flex-shrink-0">
+                            <span className="text-sm font-bold text-cyan-400">{formatPrice(item.price)}</span>
+                            {item.discount > 0 && (
+                              <span className="block text-[10px] text-rose-400 font-bold">Save {item.discount}%</span>
+                            )}
                           </div>
                         </div>
-                        <div className="text-right flex-shrink-0">
-                          <span className="text-sm font-bold text-cyan-400">{formatPrice(item.price)}</span>
-                          {item.discount > 0 && (
-                            <span className="block text-[10px] text-rose-400 font-bold">Save {item.discount}%</span>
-                          )}
-                        </div>
-                      </div>
                     ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-6 text-sm text-slate-400">
-                    No gadgets found matching &quot;{searchQuery}&quot;
+                      </div>
+                    ) : (
+                    <div className="text-center py-6 text-sm text-slate-400">
+                      No gadgets found matching &quot;{searchQuery}&quot;
+                    </div>
+                )}
                   </div>
                 )}
               </div>
-            )}
-          </div>
 
           {/* Quick Action Icons */}
-          <div className="flex items-center gap-2 sm:gap-3">
-            {/* Currency Pill */}
-            <div className={`hidden sm:flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-bold border ${isDark ? 'bg-slate-800/80 border-slate-700 text-cyan-400' : 'bg-slate-100 border-slate-300 text-blue-600'}`}>
-              <span>৳</span>
-              <span>BDT</span>
-            </div>
+            <div className="flex items-center gap-2 sm:gap-3">
+              {/* Currency Pill */}
+              <div className={`hidden sm:flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-bold border ${isDark ? 'bg-slate-800/80 border-slate-700 text-cyan-400' : 'bg-slate-100 border-slate-300 text-blue-600'}`}>
+                <span>৳</span>
+                <span>BDT</span>
+              </div>
 
-            {/* Dark / Light Mode Toggle */}
-            <button
-              onClick={() => setIsDark(!isDark)}
-              className={`p-2.5 rounded-xl border transition-all ${
-                isDark
-                  ? 'bg-slate-900 border-slate-700 text-amber-300 hover:border-amber-400/50'
-                  : 'bg-slate-100 border-slate-300 text-slate-700 hover:border-blue-500'
-              }`}
-              title="Toggle Theme"
-            >
-              {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            </button>
+              {/* Dark / Light Mode Toggle */}
+              <button
+                onClick={() => setIsDark(!isDark)}
+                className={`p-2.5 rounded-xl border transition-all ${isDark
+                    ? 'bg-slate-900 border-slate-700 text-amber-300 hover:border-amber-400/50'
+                    : 'bg-slate-100 border-slate-300 text-slate-700 hover:border-blue-500'
+                  }`}
+                title="Toggle Theme"
+              >
+                {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+              </button>
 
-            {/* Compare Tray Icon */}
-            <button
-              onClick={() => setIsCompareModalOpen(true)}
-              className={`relative p-2.5 rounded-xl border transition-all ${
-                isDark
-                  ? 'bg-slate-900 border-slate-700 text-slate-200 hover:border-cyan-500'
-                  : 'bg-slate-100 border-slate-300 text-slate-800 hover:border-blue-500'
-              }`}
-              title="Compare Gadgets"
-            >
-              <GitCompare className="w-4 h-4" />
-              {compareList.length > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-gradient-to-r from-cyan-500 to-blue-600 text-black font-black text-[11px] rounded-full flex items-center justify-center shadow-lg">
-                  {compareList.length}
-                </span>
-              )}
-            </button>
-
-            {/* Wishlist Icon */}
-            <button
-              onClick={() => showToast(`You have ${wishlist.length} item(s) in your Wishlist`)}
-              className={`relative p-2.5 rounded-xl border transition-all ${
-                isDark
-                  ? 'bg-slate-900 border-slate-700 text-slate-200 hover:border-rose-500'
-                  : 'bg-slate-100 border-slate-300 text-slate-800 hover:border-rose-500'
-              }`}
-              title="Wishlist"
-            >
-              <Heart className={`w-4 h-4 ${wishlist.length > 0 ? 'fill-rose-500 text-rose-500' : ''}`} />
-              {wishlist.length > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-rose-500 text-white font-black text-[11px] rounded-full flex items-center justify-center shadow-lg">
-                  {wishlist.length}
-                </span>
-              )}
-            </button>
-
-            {/* Mini-Cart Drawer Trigger */}
-            <button
-              onClick={() => setIsCartOpen(true)}
-              className="flex items-center gap-2.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-blue-600 via-cyan-500 to-blue-700 text-white font-bold text-sm shadow-lg shadow-cyan-500/20 hover:opacity-95 transition-all group"
-            >
-              <div className="relative">
-                <ShoppingCart className="w-4 h-4" />
-                {cartItemCount > 0 && (
-                  <span className="absolute -top-2 -right-2.5 w-4 h-4 bg-rose-500 text-white font-black text-[9px] rounded-full flex items-center justify-center border-2 border-slate-900">
-                    {cartItemCount}
+              {/* Compare Tray Icon */}
+              <button
+                onClick={() => setIsCompareModalOpen(true)}
+                className={`relative p-2.5 rounded-xl border transition-all ${isDark
+                    ? 'bg-slate-900 border-slate-700 text-slate-200 hover:border-cyan-500'
+                    : 'bg-slate-100 border-slate-300 text-slate-800 hover:border-blue-500'
+                  }`}
+                title="Compare Gadgets"
+              >
+                <GitCompare className="w-4 h-4" />
+                {compareList.length > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-gradient-to-r from-cyan-500 to-blue-600 text-black font-black text-[11px] rounded-full flex items-center justify-center shadow-lg">
+                    {compareList.length}
                   </span>
                 )}
-              </div>
-              <span className="hidden sm:inline font-mono font-bold text-xs">
-                {cartSubtotal > 0 ? formatPrice(cartSubtotal) : 'Cart'}
-              </span>
-            </button>
-          </div>
-        </div>
+              </button>
 
-        {/* Category Navigation Bar */}
-        <div className={`border-t ${isDark ? 'border-slate-800/60 bg-slate-900/40' : 'border-slate-200 bg-slate-50/60'} overflow-x-auto`}>
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2.5 flex items-center gap-2 min-w-max">
-            <button
-              onClick={() => setSelectedCategory('All')}
-              className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 ${
-                selectedCategory === 'All'
-                  ? 'bg-gradient-to-r from-blue-600 to-cyan-500 text-white shadow-md'
-                  : isDark
-                  ? 'text-slate-400 hover:text-white hover:bg-slate-800'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
-              }`}
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              All Gadgets
-            </button>
-            {dynamicCategories.map((cat) => {
-              const IconComp = categoryIconMap[cat.name] || Smartphone;
-              const isSelected = selectedCategory === cat.name;
-              return (
-                <button
-                  key={cat.id}
-                  onClick={() => setSelectedCategory(cat.name)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 ${
-                    isSelected
-                      ? 'bg-gradient-to-r from-blue-600 to-cyan-500 text-white shadow-md'
-                      : isDark
+              {/* Wishlist Icon */}
+              <button
+                onClick={() => showToast(`You have ${wishlist.length} item(s) in your Wishlist`)}
+                className={`relative p-2.5 rounded-xl border transition-all ${isDark
+                    ? 'bg-slate-900 border-slate-700 text-slate-200 hover:border-rose-500'
+                    : 'bg-slate-100 border-slate-300 text-slate-800 hover:border-rose-500'
+                  }`}
+                title="Wishlist"
+              >
+                <Heart className={`w-4 h-4 ${wishlist.length > 0 ? 'fill-rose-500 text-rose-500' : ''}`} />
+                {wishlist.length > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-rose-500 text-white font-black text-[11px] rounded-full flex items-center justify-center shadow-lg">
+                    {wishlist.length}
+                  </span>
+                )}
+              </button>
+
+              {/* Mini-Cart Drawer Trigger */}
+              <button
+                onClick={() => setIsCartOpen(true)}
+                className="flex items-center gap-2.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-blue-600 via-cyan-500 to-blue-700 text-white font-bold text-sm shadow-lg shadow-cyan-500/20 hover:opacity-95 transition-all group"
+              >
+                <div className="relative">
+                  <ShoppingCart className="w-4 h-4" />
+                  {cartItemCount > 0 && (
+                    <span className="absolute -top-2 -right-2.5 w-4 h-4 bg-rose-500 text-white font-black text-[9px] rounded-full flex items-center justify-center border-2 border-slate-900">
+                      {cartItemCount}
+                    </span>
+                  )}
+                </div>
+                <span className="hidden sm:inline font-mono font-bold text-xs">
+                  {cartSubtotal > 0 ? formatPrice(cartSubtotal) : 'Cart'}
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {/* Category Navigation Bar */}
+          <div className={`border-t ${isDark ? 'border-slate-800/60 bg-slate-900/40' : 'border-slate-200 bg-slate-50/60'} overflow-x-auto`}>
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2.5 flex items-center gap-2 min-w-max">
+              <button
+                onClick={() => setSelectedCategory('All')}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 ${selectedCategory === 'All'
+                    ? 'bg-gradient-to-r from-blue-600 to-cyan-500 text-white shadow-md'
+                    : isDark
                       ? 'text-slate-400 hover:text-white hover:bg-slate-800'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
                   }`}
-                >
-                  <IconComp className="w-3.5 h-3.5" />
-                  {cat.name}
-                </button>
-              );
-            })}
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                All Gadgets
+              </button>
+              {dynamicCategories.map((cat) => {
+                const IconComp = categoryIconMap[cat.name] || Smartphone;
+                const isSelected = selectedCategory === cat.name;
+                return (
+                  <button
+                    key={cat.id}
+                    onClick={() => setSelectedCategory(cat.name)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 ${isSelected
+                        ? 'bg-gradient-to-r from-blue-600 to-cyan-500 text-white shadow-md'
+                        : isDark
+                          ? 'text-slate-400 hover:text-white hover:bg-slate-800'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+                      }`}
+                  >
+                    <IconComp className="w-3.5 h-3.5" />
+                    {cat.name}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
       </header>
 
       {/* ─── 3. HERO CAROUSEL SECTION ─────────────────────────────────────────── */}
@@ -748,9 +778,8 @@ export default function HomePage() {
                   <button
                     key={i}
                     onClick={() => setCurrentSlide(i)}
-                    className={`h-2 rounded-full transition-all ${
-                      currentSlide === i ? 'w-6 bg-cyan-400' : 'w-2 bg-slate-700'
-                    }`}
+                    className={`h-2 rounded-full transition-all ${currentSlide === i ? 'w-6 bg-cyan-400' : 'w-2 bg-slate-700'
+                      }`}
                     aria-label={`Slide ${i + 1}`}
                   />
                 ))}
@@ -824,9 +853,8 @@ export default function HomePage() {
               return (
                 <div
                   key={product.id}
-                  className={`rounded-2xl border p-4.5 flex flex-col justify-between transition-all hover:scale-[1.02] shadow-lg ${
-                    isDark ? 'bg-slate-900/90 border-slate-800 hover:border-rose-500/50' : 'bg-white border-slate-200 hover:border-rose-400'
-                  }`}
+                  className={`rounded-2xl border p-4.5 flex flex-col justify-between transition-all hover:scale-[1.02] shadow-lg ${isDark ? 'bg-slate-900/90 border-slate-800 hover:border-rose-500/50' : 'bg-white border-slate-200 hover:border-rose-400'
+                    }`}
                 >
                   <div>
                     {/* Top Badges */}
@@ -855,25 +883,28 @@ export default function HomePage() {
                     {/* Thumbnail */}
                     <div
                       onClick={() => setQuickViewProduct(product)}
-                      className="w-full aspect-[4/3] rounded-xl bg-slate-950/60 border border-slate-800/80 mb-3 flex flex-col items-center justify-center cursor-pointer group p-2 relative overflow-hidden"
+                      className="w-full aspect-[4/3] rounded-xl bg-slate-950/60 border border-slate-800/80 mb-3 flex flex-col items-center justify-center cursor-pointer group relative overflow-hidden"
                     >
-                      {product.images && product.images[0] && !product.images[0].includes('placeholder.jpg') ? (
-                        <img
-                          src={product.images[0]}
-                          alt={product.name}
-                          className="w-full h-full object-contain p-1 group-hover:scale-105 transition-transform duration-300"
-                        />
-                      ) : (
-                        <div className="flex flex-col items-center justify-center p-2">
-                          <Cpu className="w-12 h-12 text-slate-600 group-hover:text-cyan-400 transition-colors group-hover:scale-110" />
-                          <span className="text-[11px] font-mono font-bold text-slate-400 mt-2 text-center line-clamp-1">
-                            {product.brand} • {product.category}
-                          </span>
-                        </div>
-                      )}
-                      <span className="absolute bottom-2 text-[9px] font-bold text-cyan-400/80 opacity-0 group-hover:opacity-100 transition-opacity">
-                        Click for Specs
-                      </span>
+                        {(() => {
+                          const imgSrc = getProductImage(product);
+                          return imgSrc ? (
+                            <img
+                              src={imgSrc}
+                              alt={product.name}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            />
+                          ) : (
+                            <div className="flex flex-col items-center justify-center p-2">
+                              <Cpu className="w-12 h-12 text-slate-600 group-hover:text-cyan-400 transition-colors group-hover:scale-110" />
+                              <span className="text-[11px] font-mono font-bold text-slate-400 mt-2 text-center line-clamp-1">
+                                {product.brand} • {product.category}
+                              </span>
+                            </div>
+                          );
+                        })()}
+                        <span className="absolute bottom-2 text-[9px] font-bold text-cyan-400/80 opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 px-2 py-0.5 rounded backdrop-blur-sm">
+                          Click for Specs
+                        </span>
                     </div>
 
                     {/* Product Name & Brand */}
@@ -919,11 +950,10 @@ export default function HomePage() {
                     </button>
                     <button
                       onClick={() => toggleCompare(product)}
-                      className={`px-3 py-2 rounded-xl border text-xs font-bold transition-colors flex items-center justify-center gap-1.5 ${
-                        compareList.some((item) => item.id === product.id)
+                      className={`px-3 py-2 rounded-xl border text-xs font-bold transition-colors flex items-center justify-center gap-1.5 ${compareList.some((item) => item.id === product.id)
                           ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300'
                           : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-cyan-400'
-                      }`}
+                        }`}
                     >
                       <GitCompare className="w-3.5 h-3.5" />
                       Compare
@@ -965,17 +995,15 @@ export default function HomePage() {
                 <div
                   key={cat.id}
                   onClick={() => setSelectedCategory(cat.name)}
-                  className={`p-4 rounded-2xl border text-center cursor-pointer transition-all hover:scale-105 flex flex-col items-center justify-between gap-3 shadow-md ${
-                    isSelected
+                  className={`p-4 rounded-2xl border text-center cursor-pointer transition-all hover:scale-105 flex flex-col items-center justify-between gap-3 shadow-md ${isSelected
                       ? 'bg-gradient-to-b from-blue-900/40 to-cyan-900/30 border-cyan-400 shadow-cyan-500/20'
                       : isDark
-                      ? 'bg-slate-900/70 border-slate-800 hover:border-slate-700'
-                      : 'bg-white border-slate-200 hover:border-blue-400'
-                  }`}
+                        ? 'bg-slate-900/70 border-slate-800 hover:border-slate-700'
+                        : 'bg-white border-slate-200 hover:border-blue-400'
+                    }`}
                 >
-                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-colors ${
-                    isSelected ? 'bg-cyan-500 text-black font-bold' : isDark ? 'bg-slate-800 text-cyan-400' : 'bg-slate-100 text-blue-600'
-                  }`}>
+                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-colors ${isSelected ? 'bg-cyan-500 text-black font-bold' : isDark ? 'bg-slate-800 text-cyan-400' : 'bg-slate-100 text-blue-600'
+                    }`}>
                     <IconComp className="w-6 h-6" />
                   </div>
                   <div>
@@ -1007,36 +1035,32 @@ export default function HomePage() {
             <div className="flex items-center gap-2 bg-slate-900/90 p-1.5 rounded-2xl border border-slate-800">
               <button
                 onClick={() => setActiveTab('hot')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                  activeTab === 'hot' ? 'bg-gradient-to-r from-blue-600 to-cyan-500 text-white shadow' : 'text-slate-400 hover:text-white'
-                }`}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${activeTab === 'hot' ? 'bg-gradient-to-r from-blue-600 to-cyan-500 text-white shadow' : 'text-slate-400 hover:text-white'
+                  }`}
               >
                 <Flame className="w-3.5 h-3.5 text-amber-400" />
                 Hot Drops
               </button>
               <button
                 onClick={() => setActiveTab('top')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                  activeTab === 'top' ? 'bg-gradient-to-r from-blue-600 to-cyan-500 text-white shadow' : 'text-slate-400 hover:text-white'
-                }`}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${activeTab === 'top' ? 'bg-gradient-to-r from-blue-600 to-cyan-500 text-white shadow' : 'text-slate-400 hover:text-white'
+                  }`}
               >
                 <Star className="w-3.5 h-3.5 text-amber-400" />
                 Top Rated
               </button>
               <button
                 onClick={() => setActiveTab('warranty')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                  activeTab === 'warranty' ? 'bg-gradient-to-r from-blue-600 to-cyan-500 text-white shadow' : 'text-slate-400 hover:text-white'
-                }`}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${activeTab === 'warranty' ? 'bg-gradient-to-r from-blue-600 to-cyan-500 text-white shadow' : 'text-slate-400 hover:text-white'
+                  }`}
               >
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
                 Official BD Warranty
               </button>
               <button
                 onClick={() => setActiveTab('budget')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                  activeTab === 'budget' ? 'bg-gradient-to-r from-blue-600 to-cyan-500 text-white shadow' : 'text-slate-400 hover:text-white'
-                }`}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${activeTab === 'budget' ? 'bg-gradient-to-r from-blue-600 to-cyan-500 text-white shadow' : 'text-slate-400 hover:text-white'
+                  }`}
               >
                 <Percent className="w-3.5 h-3.5 text-cyan-400" />
                 Budget Bangers
@@ -1053,11 +1077,10 @@ export default function HomePage() {
               return (
                 <div
                   key={product.id}
-                  className={`rounded-2xl border p-5 flex flex-col justify-between transition-all hover:scale-[1.02] shadow-lg group ${
-                    isDark
+                  className={`rounded-2xl border p-5 flex flex-col justify-between transition-all hover:scale-[1.02] shadow-lg group ${isDark
                       ? 'bg-slate-900/80 border-slate-800/80 hover:border-cyan-500/50'
                       : 'bg-white border-slate-200 hover:border-blue-400'
-                  }`}
+                    }`}
                 >
                   <div>
                     {/* Badge header */}
@@ -1092,25 +1115,28 @@ export default function HomePage() {
                     {/* Interactive Thumbnail */}
                     <div
                       onClick={() => setQuickViewProduct(product)}
-                      className="w-full aspect-[4/3] rounded-xl bg-slate-950/70 border border-slate-800 mb-4 flex flex-col items-center justify-center p-2 cursor-pointer relative overflow-hidden group-hover:border-cyan-500/40 transition-colors"
+                      className="w-full aspect-[4/3] rounded-xl bg-slate-950/70 border border-slate-800 mb-4 flex flex-col items-center justify-center cursor-pointer relative overflow-hidden group-hover:border-cyan-500/40 transition-colors"
                     >
-                      {product.images && product.images[0] && !product.images[0].includes('placeholder.jpg') ? (
-                        <img
-                          src={product.images[0]}
-                          alt={product.name}
-                          className="w-full h-full object-contain p-2 group-hover:scale-105 transition-transform duration-300"
-                        />
-                      ) : (
-                        <div className="flex flex-col items-center justify-center p-4">
-                          <Cpu className="w-14 h-14 text-slate-600 group-hover:text-cyan-400 group-hover:scale-110 transition-all duration-300" />
-                          <span className="text-[10px] font-mono text-slate-400 mt-2 font-bold uppercase tracking-wider">
-                            SKU: {product.sku}
-                          </span>
-                        </div>
-                      )}
-                      <span className="absolute bottom-2 text-[10px] font-bold text-cyan-400 opacity-0 group-hover:opacity-100 transition-opacity">
-                        Quick Blueprint View
-                      </span>
+                        {(() => {
+                          const imgSrc = getProductImage(product);
+                          return imgSrc ? (
+                            <img
+                              src={imgSrc}
+                              alt={product.name}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            />
+                          ) : (
+                            <div className="flex flex-col items-center justify-center p-4">
+                              <Cpu className="w-14 h-14 text-slate-600 group-hover:text-cyan-400 group-hover:scale-110 transition-all duration-300" />
+                              <span className="text-[10px] font-mono text-slate-400 mt-2 font-bold uppercase tracking-wider">
+                                SKU: {product.sku}
+                              </span>
+                            </div>
+                          );
+                        })()}
+                        <span className="absolute bottom-2 text-[10px] font-bold text-cyan-400 opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 px-2 py-0.5 rounded backdrop-blur-sm">
+                          Quick Blueprint View
+                        </span>
                     </div>
 
                     {/* Product Metadata */}
@@ -1175,11 +1201,10 @@ export default function HomePage() {
                       </button>
                       <button
                         onClick={() => toggleCompare(product)}
-                        className={`w-full py-2.5 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                          isCompared
+                        className={`w-full py-2.5 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${isCompared
                             ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300'
                             : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:border-cyan-400'
-                        }`}
+                          }`}
                       >
                         <GitCompare className="w-3.5 h-3.5" />
                         {isCompared ? 'Compared' : 'Compare'}
@@ -1264,9 +1289,8 @@ export default function HomePage() {
                   setSearchQuery(b.name);
                   showToast(`Searching for ${b.name} products...`);
                 }}
-                className={`p-3.5 rounded-xl border text-center cursor-pointer transition-all hover:scale-105 flex flex-col items-center justify-center gap-1.5 ${
-                  isDark ? 'bg-slate-900/70 border-slate-800 hover:border-cyan-500/50' : 'bg-white border-slate-200 hover:border-blue-500'
-                }`}
+                className={`p-3.5 rounded-xl border text-center cursor-pointer transition-all hover:scale-105 flex flex-col items-center justify-center gap-1.5 ${isDark ? 'bg-slate-900/70 border-slate-800 hover:border-cyan-500/50' : 'bg-white border-slate-200 hover:border-blue-500'
+                  }`}
               >
                 <div className="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center font-black text-xs text-cyan-400">
                   {b.name[0]}
@@ -1539,271 +1563,282 @@ export default function HomePage() {
                     cart.map((item) => (
                       <div key={item.product.id} className="py-3.5 flex items-center justify-between gap-3">
                         <div className="flex items-center gap-3">
-                          <div className="w-12 h-12 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center font-black text-cyan-400 text-xs">
-                            {item.product.brand[0]}
+                            <div className="w-12 h-12 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center font-black text-cyan-400 text-xs overflow-hidden flex-shrink-0">
+                              {getProductImage(item.product) ? (
+                                <img
+                                  src={getProductImage(item.product)!}
+                                  alt={item.product.name}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                item.product.brand[0]
+                              )}
+                            </div>
+                            <div>
+                              <h4 className="text-xs font-bold text-white line-clamp-1">{item.product.name}</h4>
+                              <span className="text-xs font-mono font-bold text-cyan-400">
+                                {formatPrice(item.product.price)}
+                              </span>
+                            </div>
                           </div>
-                          <div>
-                            <h4 className="text-xs font-bold text-white line-clamp-1">{item.product.name}</h4>
-                            <span className="text-xs font-mono font-bold text-cyan-400">
-                              {formatPrice(item.product.price)}
-                            </span>
-                          </div>
-                        </div>
 
-                        {/* Quantity Controls */}
-                        <div className="flex items-center gap-2">
-                          <div className="flex items-center rounded-lg bg-slate-900 border border-slate-800">
+                          {/* Quantity Controls */}
+                          <div className="flex items-center gap-2">
+                            <div className="flex items-center rounded-lg bg-slate-900 border border-slate-800">
+                              <button
+                                onClick={() => updateCartQuantity(item.product.id, -1)}
+                                className="p-1 text-slate-400 hover:text-white"
+                              >
+                                <Minus className="w-3 h-3" />
+                              </button>
+                              <span className="px-2 text-xs font-mono font-bold">{item.quantity}</span>
+                              <button
+                                onClick={() => updateCartQuantity(item.product.id, 1)}
+                                className="p-1 text-slate-400 hover:text-white"
+                              >
+                                <Plus className="w-3 h-3" />
+                              </button>
+                            </div>
                             <button
-                              onClick={() => updateCartQuantity(item.product.id, -1)}
-                              className="p-1 text-slate-400 hover:text-white"
+                              onClick={() => removeFromCart(item.product.id)}
+                              className="p-1 text-slate-500 hover:text-rose-400"
                             >
-                              <Minus className="w-3 h-3" />
-                            </button>
-                            <span className="px-2 text-xs font-mono font-bold">{item.quantity}</span>
-                            <button
-                              onClick={() => updateCartQuantity(item.product.id, 1)}
-                              className="p-1 text-slate-400 hover:text-white"
-                            >
-                              <Plus className="w-3 h-3" />
+                              <Trash2 className="w-4 h-4" />
                             </button>
                           </div>
-                          <button
-                            onClick={() => removeFromCart(item.product.id)}
-                            className="p-1 text-slate-500 hover:text-rose-400"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
                         </div>
-                      </div>
-                    ))
+                        ))
                   )}
-                </div>
+                      </div>
               </div>
 
-              {/* Cart Footer & Checkout */}
-              {cart.length > 0 && (
-                <div className="pt-4 border-t border-slate-800 space-y-3">
-                  {/* Voucher code input */}
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      placeholder="Voucher (HUNTER2026)"
-                      value={couponCode}
-                      onChange={(e) => setCouponCode(e.target.value)}
-                      className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs uppercase font-mono text-white outline-none focus:border-cyan-400"
-                    />
+                {/* Cart Footer & Checkout */}
+                {cart.length > 0 && (
+                  <div className="pt-4 border-t border-slate-800 space-y-3">
+                    {/* Voucher code input */}
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="Voucher (HUNTER2026)"
+                        value={couponCode}
+                        onChange={(e) => setCouponCode(e.target.value)}
+                        className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs uppercase font-mono text-white outline-none focus:border-cyan-400"
+                      />
+                      <button
+                        onClick={applyCoupon}
+                        className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-400 font-bold text-xs"
+                      >
+                        Apply
+                      </button>
+                    </div>
+
+                    {/* Pricing Breakdown */}
+                    <div className="space-y-1.5 text-xs font-mono">
+                      <div className="flex justify-between text-slate-400">
+                        <span>Subtotal</span>
+                        <span>{formatPrice(cartSubtotal)}</span>
+                      </div>
+                      {couponDiscount > 0 && (
+                        <div className="flex justify-between text-rose-400 font-bold">
+                          <span>Voucher Discount</span>
+                          <span>-{formatPrice(couponDiscount)}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between text-slate-400">
+                        <span>Dhaka Delivery</span>
+                        <span>{cartSubtotal >= 5000 ? 'FREE' : '৳70'}</span>
+                      </div>
+                      <div className="flex justify-between text-base font-black text-white pt-2 border-t border-slate-800">
+                        <span>Total (BDT)</span>
+                        <span className="text-cyan-400">
+                          {formatPrice(Math.max(0, cartSubtotal - couponDiscount + (cartSubtotal >= 5000 ? 0 : 70)))}
+                        </span>
+                      </div>
+                    </div>
+
                     <button
-                      onClick={applyCoupon}
-                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-400 font-bold text-xs"
+                      onClick={() => {
+                        showToast('Proceeding to Checkout with bKash / COD!');
+                        setIsCartOpen(false);
+                      }}
+                      className="w-full py-3.5 rounded-xl bg-gradient-to-r from-blue-600 via-cyan-500 to-blue-700 text-white font-extrabold text-sm shadow-xl shadow-cyan-500/20 hover:opacity-95 transition-all text-center"
                     >
-                      Apply
+                      Proceed to Checkout
                     </button>
                   </div>
+                )}
+              </div>
+            </div>
+          </div>
+      )}
 
-                  {/* Pricing Breakdown */}
-                  <div className="space-y-1.5 text-xs font-mono">
-                    <div className="flex justify-between text-slate-400">
-                      <span>Subtotal</span>
-                      <span>{formatPrice(cartSubtotal)}</span>
+          {/* ─── 13. QUICK VIEW BLUEPRINT MODAL ────────────────────────────────────── */}
+          {quickViewProduct && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+              <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl bg-slate-950 border border-cyan-500/40 p-6 sm:p-8 shadow-2xl">
+                <button
+                  onClick={() => setQuickViewProduct(null)}
+                  className="absolute top-5 right-5 p-2 rounded-xl bg-slate-900 text-slate-400 hover:text-white"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+
+                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-cyan-400 bg-cyan-500/10 px-2.5 py-0.5 rounded border border-cyan-500/30">
+                    {quickViewProduct.brand} • {quickViewProduct.category}
+                  </span>
+                  <span className="text-[10px] font-mono text-emerald-400 font-bold">
+                    {quickViewProduct.warranty}
+                  </span>
+                  {quickViewProduct.badge && (
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2.5 py-0.5 rounded flex items-center gap-1 shadow-sm">
+                      <Sparkles className="w-3 h-3 text-amber-400" />
+                      {quickViewProduct.badge}
+                    </span>
+                  )}
+                </div>
+
+                {(() => {
+                  const imgSrc = getProductImage(quickViewProduct);
+                  return imgSrc ? (
+                    <div className="w-full h-56 sm:h-72 rounded-2xl bg-slate-900/60 border border-slate-800 mb-4 flex items-center justify-center overflow-hidden">
+                      <img
+                        src={imgSrc}
+                        alt={quickViewProduct.name}
+                        className="w-full h-full object-cover"
+                      />
                     </div>
-                    {couponDiscount > 0 && (
-                      <div className="flex justify-between text-rose-400 font-bold">
-                        <span>Voucher Discount</span>
-                        <span>-{formatPrice(couponDiscount)}</span>
+                  ) : null;
+                })()}
+
+                <h3 className="text-xl sm:text-2xl font-black text-white">{quickViewProduct.name}</h3>
+
+                <div className="flex items-baseline gap-3 my-3">
+                  <span className="text-2xl font-black text-cyan-400">{formatPrice(quickViewProduct.price)}</span>
+                  {quickViewProduct.originalPrice > quickViewProduct.price && (
+                    <span className="text-sm line-through text-slate-500">{formatPrice(quickViewProduct.originalPrice)}</span>
+                  )}
+                </div>
+
+                <p className="text-xs sm:text-sm text-slate-300 leading-relaxed mb-4">
+                  {quickViewProduct.description}
+                </p>
+
+                {/* Technical Blueprint Table */}
+                <div className="rounded-2xl bg-slate-900/90 border border-slate-800 p-4 mb-6">
+                  <h4 className="text-xs font-mono font-bold text-slate-400 uppercase tracking-widest mb-3">
+                    Hardware Specifications
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-mono">
+                    {Object.entries(quickViewProduct.specs).map(([key, val], idx) => (
+                      <div key={idx} className="p-2 rounded bg-slate-950/60 border border-slate-800 flex justify-between">
+                        <span className="text-slate-400">{key}:</span>
+                        <span className="text-slate-200 font-semibold text-right max-w-[140px] truncate">{val}</span>
                       </div>
-                    )}
-                    <div className="flex justify-between text-slate-400">
-                      <span>Dhaka Delivery</span>
-                      <span>{cartSubtotal >= 5000 ? 'FREE' : '৳70'}</span>
-                    </div>
-                    <div className="flex justify-between text-base font-black text-white pt-2 border-t border-slate-800">
-                      <span>Total (BDT)</span>
-                      <span className="text-cyan-400">
-                        {formatPrice(Math.max(0, cartSubtotal - couponDiscount + (cartSubtotal >= 5000 ? 0 : 70)))}
-                      </span>
-                    </div>
+                    ))}
                   </div>
+                </div>
 
+                {/* Modal Actions */}
+                <div className="flex items-center gap-3">
                   <button
                     onClick={() => {
-                      showToast('Proceeding to Checkout with bKash / COD!');
-                      setIsCartOpen(false);
+                      addToCart(quickViewProduct);
+                      setQuickViewProduct(null);
                     }}
-                    className="w-full py-3.5 rounded-xl bg-gradient-to-r from-blue-600 via-cyan-500 to-blue-700 text-white font-extrabold text-sm shadow-xl shadow-cyan-500/20 hover:opacity-95 transition-all text-center"
+                    className="flex-1 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-black font-extrabold text-sm shadow-lg hover:scale-[1.02] transition-transform flex items-center justify-center gap-2"
                   >
-                    Proceed to Checkout
+                    <ShoppingCart className="w-4 h-4" />
+                    Add to Cart
+                  </button>
+                  <button
+                    onClick={() => {
+                      toggleCompare(quickViewProduct);
+                      setQuickViewProduct(null);
+                    }}
+                    className="px-5 py-3 rounded-xl bg-slate-900 border border-slate-700 text-slate-300 font-bold text-sm hover:border-cyan-400"
+                  >
+                    Add to Compare
                   </button>
                 </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ─── 13. QUICK VIEW BLUEPRINT MODAL ────────────────────────────────────── */}
-      {quickViewProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-          <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl bg-slate-950 border border-cyan-500/40 p-6 sm:p-8 shadow-2xl">
-            <button
-              onClick={() => setQuickViewProduct(null)}
-              className="absolute top-5 right-5 p-2 rounded-xl bg-slate-900 text-slate-400 hover:text-white"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-cyan-400 bg-cyan-500/10 px-2.5 py-0.5 rounded border border-cyan-500/30">
-                {quickViewProduct.brand} • {quickViewProduct.category}
-              </span>
-              <span className="text-[10px] font-mono text-emerald-400 font-bold">
-                {quickViewProduct.warranty}
-              </span>
-              {quickViewProduct.badge && (
-                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2.5 py-0.5 rounded flex items-center gap-1 shadow-sm">
-                  <Sparkles className="w-3 h-3 text-amber-400" />
-                  {quickViewProduct.badge}
-                </span>
-              )}
-            </div>
-
-            {quickViewProduct.images && quickViewProduct.images[0] && !quickViewProduct.images[0].includes('placeholder.jpg') && (
-              <div className="w-full h-48 sm:h-64 rounded-2xl bg-slate-900/60 border border-slate-800 mb-4 flex items-center justify-center p-4 overflow-hidden">
-                <img
-                  src={quickViewProduct.images[0]}
-                  alt={quickViewProduct.name}
-                  className="max-h-full object-contain"
-                />
               </div>
-            )}
-
-            <h3 className="text-xl sm:text-2xl font-black text-white">{quickViewProduct.name}</h3>
-
-            <div className="flex items-baseline gap-3 my-3">
-              <span className="text-2xl font-black text-cyan-400">{formatPrice(quickViewProduct.price)}</span>
-              {quickViewProduct.originalPrice > quickViewProduct.price && (
-                <span className="text-sm line-through text-slate-500">{formatPrice(quickViewProduct.originalPrice)}</span>
-              )}
             </div>
+          )}
 
-            <p className="text-xs sm:text-sm text-slate-300 leading-relaxed mb-4">
-              {quickViewProduct.description}
-            </p>
-
-            {/* Technical Blueprint Table */}
-            <div className="rounded-2xl bg-slate-900/90 border border-slate-800 p-4 mb-6">
-              <h4 className="text-xs font-mono font-bold text-slate-400 uppercase tracking-widest mb-3">
-                Hardware Specifications
-              </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-mono">
-                {Object.entries(quickViewProduct.specs).map(([key, val], idx) => (
-                  <div key={idx} className="p-2 rounded bg-slate-950/60 border border-slate-800 flex justify-between">
-                    <span className="text-slate-400">{key}:</span>
-                    <span className="text-slate-200 font-semibold text-right max-w-[140px] truncate">{val}</span>
+          {/* ─── 14. COMPREHENSIVE FOOTER ─────────────────────────────────────────── */}
+          <footer className="mt-auto border-t border-slate-800 bg-[#060910] text-slate-400 text-xs">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+                {/* Col 1: Brand Info */}
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="text-lg font-extrabold tracking-tight bg-gradient-to-r from-blue-500 to-cyan-400 bg-clip-text text-transparent">
+                      TechHunterBD
+                    </span>
+                    <span className="bg-cyan-500/10 text-cyan-400 text-[9px] font-black px-1.5 py-0.5 rounded border border-cyan-500/30">
+                      FLAGSHIP
+                    </span>
                   </div>
-                ))}
+                  <p className="text-xs text-slate-400 leading-relaxed mb-4">
+                    Bangladesh&apos;s leading consumer tech portal for genuine smartphones, high-end laptops, PC components, and gaming gear.
+                  </p>
+                  <div className="font-mono text-[11px] space-y-1 text-slate-300">
+                    <p>📍 Gulshan-2, Dhaka 1212, Bangladesh</p>
+                    <p>📞 Hotline: +880 1700-TECHBD (832423)</p>
+                    <p>✉️ Support: support@techhunterbd.com</p>
+                  </div>
+                </div>
+
+                {/* Col 2: Quick Links */}
+                <div>
+                  <h4 className="text-sm font-bold text-white mb-3 tracking-wide">Customer Support</h4>
+                  <ul className="space-y-2">
+                    <li><a href="#" className="hover:text-cyan-400 transition-colors">Official Warranty Verification</a></li>
+                    <li><a href="#" className="hover:text-cyan-400 transition-colors">Track Courier Delivery (Steadfast/Pathao)</a></li>
+                    <li><a href="#" className="hover:text-cyan-400 transition-colors">7-Day Return & Replacement Policy</a></li>
+                    <li><a href="#" className="hover:text-cyan-400 transition-colors">0% EMI Terms & Card Partners</a></li>
+                    <li><a href="#" className="hover:text-cyan-400 transition-colors">Store Pickup in Dhaka</a></li>
+                  </ul>
+                </div>
+
+                {/* Col 3: Categories */}
+                <div>
+                  <h4 className="text-sm font-bold text-white mb-3 tracking-wide">Top Gadget Drops</h4>
+                  <ul className="space-y-2">
+                    <li><a href="#" onClick={() => setSelectedCategory('Smartphones')} className="hover:text-cyan-400 transition-colors">Samsung Galaxy S25 Ultra</a></li>
+                    <li><a href="#" onClick={() => setSelectedCategory('Smartphones')} className="hover:text-cyan-400 transition-colors">Apple iPhone 16 Pro Max</a></li>
+                    <li><a href="#" onClick={() => setSelectedCategory('Laptops')} className="hover:text-cyan-400 transition-colors">Apple MacBook Air M3</a></li>
+                    <li><a href="#" onClick={() => setSelectedCategory('Gaming')} className="hover:text-cyan-400 transition-colors">Sony PlayStation 5 Slim</a></li>
+                    <li><a href="#" onClick={() => setSelectedCategory('PC Components')} className="hover:text-cyan-400 transition-colors">NVIDIA RTX 4070 Super GPU</a></li>
+                  </ul>
+                </div>
+
+                {/* Col 4: Payments & Guarantee */}
+                <div>
+                  <h4 className="text-sm font-bold text-white mb-3 tracking-wide">Supported Payment Gateways</h4>
+                  <p className="text-xs text-slate-400 mb-3">
+                    Direct merchant checkout with Instant bKash PIN, Nagad, Rocket, Credit/Debit cards & Cash on Delivery.
+                  </p>
+                  <div className="grid grid-cols-3 gap-2 font-mono font-bold text-[10px] text-center">
+                    <span className="p-2 rounded bg-slate-900 border border-slate-800 text-rose-400">bKash</span>
+                    <span className="p-2 rounded bg-slate-900 border border-slate-800 text-orange-400">Nagad</span>
+                    <span className="p-2 rounded bg-slate-900 border border-slate-800 text-purple-400">Rocket</span>
+                    <span className="p-2 rounded bg-slate-900 border border-slate-800 text-blue-400">Visa</span>
+                    <span className="p-2 rounded bg-slate-900 border border-slate-800 text-amber-400">Mastercard</span>
+                    <span className="p-2 rounded bg-slate-900 border border-slate-800 text-emerald-400">COD</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-8 pt-6 border-t border-slate-900 flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] text-slate-500">
+                <p>© 2026 TechHunterBD Ltd. All rights reserved. Designed for Bangladesh Tech Enthusiasts.</p>
+                <p className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                  All Systems Operational | Dhaka Server CDN
+                </p>
               </div>
             </div>
-
-            {/* Modal Actions */}
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => {
-                  addToCart(quickViewProduct);
-                  setQuickViewProduct(null);
-                }}
-                className="flex-1 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-black font-extrabold text-sm shadow-lg hover:scale-[1.02] transition-transform flex items-center justify-center gap-2"
-              >
-                <ShoppingCart className="w-4 h-4" />
-                Add to Cart
-              </button>
-              <button
-                onClick={() => {
-                  toggleCompare(quickViewProduct);
-                  setQuickViewProduct(null);
-                }}
-                className="px-5 py-3 rounded-xl bg-slate-900 border border-slate-700 text-slate-300 font-bold text-sm hover:border-cyan-400"
-              >
-                Add to Compare
-              </button>
-            </div>
-          </div>
+          </footer>
         </div>
-      )}
-
-      {/* ─── 14. COMPREHENSIVE FOOTER ─────────────────────────────────────────── */}
-      <footer className="mt-auto border-t border-slate-800 bg-[#060910] text-slate-400 text-xs">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-            {/* Col 1: Brand Info */}
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-lg font-extrabold tracking-tight bg-gradient-to-r from-blue-500 to-cyan-400 bg-clip-text text-transparent">
-                  TechHunterBD
-                </span>
-                <span className="bg-cyan-500/10 text-cyan-400 text-[9px] font-black px-1.5 py-0.5 rounded border border-cyan-500/30">
-                  FLAGSHIP
-                </span>
-              </div>
-              <p className="text-xs text-slate-400 leading-relaxed mb-4">
-                Bangladesh&apos;s leading consumer tech portal for genuine smartphones, high-end laptops, PC components, and gaming gear.
-              </p>
-              <div className="font-mono text-[11px] space-y-1 text-slate-300">
-                <p>📍 Gulshan-2, Dhaka 1212, Bangladesh</p>
-                <p>📞 Hotline: +880 1700-TECHBD (832423)</p>
-                <p>✉️ Support: support@techhunterbd.com</p>
-              </div>
-            </div>
-
-            {/* Col 2: Quick Links */}
-            <div>
-              <h4 className="text-sm font-bold text-white mb-3 tracking-wide">Customer Support</h4>
-              <ul className="space-y-2">
-                <li><a href="#" className="hover:text-cyan-400 transition-colors">Official Warranty Verification</a></li>
-                <li><a href="#" className="hover:text-cyan-400 transition-colors">Track Courier Delivery (Steadfast/Pathao)</a></li>
-                <li><a href="#" className="hover:text-cyan-400 transition-colors">7-Day Return & Replacement Policy</a></li>
-                <li><a href="#" className="hover:text-cyan-400 transition-colors">0% EMI Terms & Card Partners</a></li>
-                <li><a href="#" className="hover:text-cyan-400 transition-colors">Store Pickup in Dhaka</a></li>
-              </ul>
-            </div>
-
-            {/* Col 3: Categories */}
-            <div>
-              <h4 className="text-sm font-bold text-white mb-3 tracking-wide">Top Gadget Drops</h4>
-              <ul className="space-y-2">
-                <li><a href="#" onClick={() => setSelectedCategory('Smartphones')} className="hover:text-cyan-400 transition-colors">Samsung Galaxy S25 Ultra</a></li>
-                <li><a href="#" onClick={() => setSelectedCategory('Smartphones')} className="hover:text-cyan-400 transition-colors">Apple iPhone 16 Pro Max</a></li>
-                <li><a href="#" onClick={() => setSelectedCategory('Laptops')} className="hover:text-cyan-400 transition-colors">Apple MacBook Air M3</a></li>
-                <li><a href="#" onClick={() => setSelectedCategory('Gaming')} className="hover:text-cyan-400 transition-colors">Sony PlayStation 5 Slim</a></li>
-                <li><a href="#" onClick={() => setSelectedCategory('PC Components')} className="hover:text-cyan-400 transition-colors">NVIDIA RTX 4070 Super GPU</a></li>
-              </ul>
-            </div>
-
-            {/* Col 4: Payments & Guarantee */}
-            <div>
-              <h4 className="text-sm font-bold text-white mb-3 tracking-wide">Supported Payment Gateways</h4>
-              <p className="text-xs text-slate-400 mb-3">
-                Direct merchant checkout with Instant bKash PIN, Nagad, Rocket, Credit/Debit cards & Cash on Delivery.
-              </p>
-              <div className="grid grid-cols-3 gap-2 font-mono font-bold text-[10px] text-center">
-                <span className="p-2 rounded bg-slate-900 border border-slate-800 text-rose-400">bKash</span>
-                <span className="p-2 rounded bg-slate-900 border border-slate-800 text-orange-400">Nagad</span>
-                <span className="p-2 rounded bg-slate-900 border border-slate-800 text-purple-400">Rocket</span>
-                <span className="p-2 rounded bg-slate-900 border border-slate-800 text-blue-400">Visa</span>
-                <span className="p-2 rounded bg-slate-900 border border-slate-800 text-amber-400">Mastercard</span>
-                <span className="p-2 rounded bg-slate-900 border border-slate-800 text-emerald-400">COD</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-8 pt-6 border-t border-slate-900 flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] text-slate-500">
-            <p>© 2026 TechHunterBD Ltd. All rights reserved. Designed for Bangladesh Tech Enthusiasts.</p>
-            <p className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              All Systems Operational | Dhaka Server CDN
-            </p>
-          </div>
-        </div>
-      </footer>
-    </div>
-  );
+      );
 }

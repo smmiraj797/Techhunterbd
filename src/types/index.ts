@@ -26,6 +26,7 @@ export interface Product {
   isNew: boolean;
   isFeatured: boolean;
   isFlashSale: boolean;
+  badge?: string; // Optional custom promotional tag e.g. "Official Warranty", "Hot Deal"
   flashSaleEndsAt: number | null; // Unix timestamp in ms
   rating: number;
   reviewCount: number;

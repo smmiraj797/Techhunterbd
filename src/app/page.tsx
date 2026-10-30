@@ -47,6 +47,9 @@ import { brands } from '@/data/brands';
 import { formatPrice, formatDiscount } from '@/lib/utils';
 import { Product } from '@/types';
 
+const STORAGE_PRODUCTS_KEY = 'techhunter_custom_products';
+const STORAGE_CATEGORIES_KEY = 'techhunter_custom_categories';
+
 // Map category icons to Lucide components
 const categoryIconMap: Record<string, React.ElementType> = {
   Smartphones: Smartphone,
@@ -62,6 +65,69 @@ const categoryIconMap: Record<string, React.ElementType> = {
 export default function HomePage() {
   // Theme state: dark (default) or light
   const [isDark, setIsDark] = useState(true);
+
+  // Synchronized catalog state (localStorage fallback to static data)
+  const [allProducts, setAllProducts] = useState<Product[]>(products);
+  const [allCategories, setAllCategories] = useState<typeof categories>(categories);
+
+  useEffect(() => {
+    const loadFromStorage = () => {
+      try {
+        if (typeof window === 'undefined') return;
+        const storedProds = localStorage.getItem(STORAGE_PRODUCTS_KEY);
+        if (storedProds) {
+          const parsed = JSON.parse(storedProds);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setAllProducts(parsed);
+          }
+        }
+        const storedCats = localStorage.getItem(STORAGE_CATEGORIES_KEY);
+        if (storedCats) {
+          const parsedCats = JSON.parse(storedCats);
+          if (Array.isArray(parsedCats) && parsedCats.length > 0) {
+            const dynamicList = parsedCats.map((catName: string, idx: number) => {
+              const existing = categories.find((c) => c.name.toLowerCase() === catName.toLowerCase());
+              if (existing) {
+                return existing;
+              }
+              return {
+                id: `cat-dyn-${idx}`,
+                name: catName,
+                slug: catName.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+                description: `Browse latest official ${catName} in Bangladesh`,
+                icon: 'Smartphone',
+                image: '/categories/smartphones.jpg',
+                productCount: 0,
+              };
+            });
+            setAllCategories(dynamicList);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load storage in homepage', err);
+      }
+    };
+
+    loadFromStorage();
+
+    const handleStorageUpdate = () => {
+      loadFromStorage();
+    };
+
+    window.addEventListener('storage_update', handleStorageUpdate);
+    window.addEventListener('storage', handleStorageUpdate);
+    return () => {
+      window.removeEventListener('storage_update', handleStorageUpdate);
+      window.removeEventListener('storage', handleStorageUpdate);
+    };
+  }, []);
+
+  const dynamicCategories = useMemo(() => {
+    return allCategories.map((cat) => ({
+      ...cat,
+      productCount: allProducts.filter((p) => p.category.toLowerCase() === cat.name.toLowerCase()).length || cat.productCount,
+    }));
+  }, [allCategories, allProducts]);
 
   // Announcement bar dismiss state
   const [showAnnouncement, setShowAnnouncement] = useState(true);
@@ -264,22 +330,22 @@ export default function HomePage() {
   const searchResults = useMemo(() => {
     if (!searchQuery.trim()) return [];
     const query = searchQuery.toLowerCase();
-    return products.filter(
+    return allProducts.filter(
       (p) =>
         p.name.toLowerCase().includes(query) ||
         p.brand.toLowerCase().includes(query) ||
         p.category.toLowerCase().includes(query) ||
-        p.tags.some((t) => t.toLowerCase().includes(query))
+        (p.tags && p.tags.some((t) => t.toLowerCase().includes(query)))
     );
-  }, [searchQuery]);
+  }, [searchQuery, allProducts]);
 
   // Curated Feeds filtering
   const curatedProducts = useMemo(() => {
-    let list = [...products];
+    let list = [...allProducts];
 
     // Category filter
     if (selectedCategory !== 'All') {
-      list = list.filter((p) => p.category === selectedCategory);
+      list = list.filter((p) => p.category.toLowerCase() === selectedCategory.toLowerCase());
     }
 
     // Tab filter
@@ -295,10 +361,12 @@ export default function HomePage() {
       default:
         return list;
     }
-  }, [selectedCategory, activeTab]);
+  }, [selectedCategory, activeTab, allProducts]);
 
   // Flash Sale products
-  const flashSaleProducts = products.filter((p) => p.isFlashSale);
+  const flashSaleProducts = useMemo(() => {
+    return allProducts.filter((p) => p.isFlashSale);
+  }, [allProducts]);
 
   return (
     <div className={`min-h-screen ${isDark ? 'bg-[#090D16] text-slate-100' : 'bg-[#F8FAFC] text-slate-900'} transition-colors duration-300 flex flex-col font-sans`}>
@@ -532,7 +600,7 @@ export default function HomePage() {
               <Sparkles className="w-3.5 h-3.5" />
               All Gadgets
             </button>
-            {categories.map((cat) => {
+            {dynamicCategories.map((cat) => {
               const IconComp = categoryIconMap[cat.name] || Smartphone;
               const isSelected = selectedCategory === cat.name;
               return (
@@ -763,10 +831,18 @@ export default function HomePage() {
                   <div>
                     {/* Top Badges */}
                     <div className="flex items-center justify-between mb-3">
-                      <span className="bg-rose-500/10 text-rose-400 border border-rose-500/30 text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1">
-                        <Percent className="w-3 h-3" />
-                        {product.discount > 0 ? `SAVE ${product.discount}%` : 'HOT DEAL'}
-                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="bg-rose-500/10 text-rose-400 border border-rose-500/30 text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1">
+                          <Percent className="w-3 h-3" />
+                          {product.discount > 0 ? `SAVE ${product.discount}%` : 'HOT DEAL'}
+                        </span>
+                        {product.badge && (
+                          <span className="bg-gradient-to-r from-amber-500/20 to-orange-500/20 text-amber-300 border border-amber-500/40 text-[9px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider flex items-center gap-1 shadow-sm">
+                            <Sparkles className="w-2.5 h-2.5 text-amber-400" />
+                            {product.badge}
+                          </span>
+                        )}
+                      </div>
                       <button
                         onClick={() => toggleWishlist(product.id)}
                         className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-rose-400 transition-colors"
@@ -776,15 +852,25 @@ export default function HomePage() {
                       </button>
                     </div>
 
-                    {/* Thumbnail Placeholder */}
+                    {/* Thumbnail */}
                     <div
                       onClick={() => setQuickViewProduct(product)}
-                      className="w-full aspect-[4/3] rounded-xl bg-slate-950/60 border border-slate-800/80 mb-3 flex flex-col items-center justify-center cursor-pointer group p-3 relative overflow-hidden"
+                      className="w-full aspect-[4/3] rounded-xl bg-slate-950/60 border border-slate-800/80 mb-3 flex flex-col items-center justify-center cursor-pointer group p-2 relative overflow-hidden"
                     >
-                      <Cpu className="w-12 h-12 text-slate-600 group-hover:text-cyan-400 transition-colors group-hover:scale-110" />
-                      <span className="text-[11px] font-mono font-bold text-slate-400 mt-2 text-center line-clamp-1">
-                        {product.brand} • {product.category}
-                      </span>
+                      {product.images && product.images[0] && !product.images[0].includes('placeholder.jpg') ? (
+                        <img
+                          src={product.images[0]}
+                          alt={product.name}
+                          className="w-full h-full object-contain p-1 group-hover:scale-105 transition-transform duration-300"
+                        />
+                      ) : (
+                        <div className="flex flex-col items-center justify-center p-2">
+                          <Cpu className="w-12 h-12 text-slate-600 group-hover:text-cyan-400 transition-colors group-hover:scale-110" />
+                          <span className="text-[11px] font-mono font-bold text-slate-400 mt-2 text-center line-clamp-1">
+                            {product.brand} • {product.category}
+                          </span>
+                        </div>
+                      )}
                       <span className="absolute bottom-2 text-[9px] font-bold text-cyan-400/80 opacity-0 group-hover:opacity-100 transition-opacity">
                         Click for Specs
                       </span>
@@ -872,7 +958,7 @@ export default function HomePage() {
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3.5">
-            {categories.map((cat) => {
+            {dynamicCategories.map((cat) => {
               const IconComp = categoryIconMap[cat.name] || Smartphone;
               const isSelected = selectedCategory === cat.name;
               return (
@@ -976,7 +1062,13 @@ export default function HomePage() {
                   <div>
                     {/* Badge header */}
                     <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {product.badge && (
+                          <span className="bg-gradient-to-r from-amber-500/20 to-orange-500/20 text-amber-300 border border-amber-500/40 text-[9px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider flex items-center gap-1 shadow-sm">
+                            <Sparkles className="w-2.5 h-2.5 text-amber-400" />
+                            {product.badge}
+                          </span>
+                        )}
                         {product.isNew && (
                           <span className="bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 text-[9px] font-black px-2 py-0.5 rounded-md uppercase">
                             NEW
@@ -1000,12 +1092,22 @@ export default function HomePage() {
                     {/* Interactive Thumbnail */}
                     <div
                       onClick={() => setQuickViewProduct(product)}
-                      className="w-full aspect-[4/3] rounded-xl bg-slate-950/70 border border-slate-800 mb-4 flex flex-col items-center justify-center p-4 cursor-pointer relative overflow-hidden group-hover:border-cyan-500/40 transition-colors"
+                      className="w-full aspect-[4/3] rounded-xl bg-slate-950/70 border border-slate-800 mb-4 flex flex-col items-center justify-center p-2 cursor-pointer relative overflow-hidden group-hover:border-cyan-500/40 transition-colors"
                     >
-                      <Cpu className="w-14 h-14 text-slate-600 group-hover:text-cyan-400 group-hover:scale-110 transition-all duration-300" />
-                      <span className="text-[10px] font-mono text-slate-400 mt-2 font-bold uppercase tracking-wider">
-                        SKU: {product.sku}
-                      </span>
+                      {product.images && product.images[0] && !product.images[0].includes('placeholder.jpg') ? (
+                        <img
+                          src={product.images[0]}
+                          alt={product.name}
+                          className="w-full h-full object-contain p-2 group-hover:scale-105 transition-transform duration-300"
+                        />
+                      ) : (
+                        <div className="flex flex-col items-center justify-center p-4">
+                          <Cpu className="w-14 h-14 text-slate-600 group-hover:text-cyan-400 group-hover:scale-110 transition-all duration-300" />
+                          <span className="text-[10px] font-mono text-slate-400 mt-2 font-bold uppercase tracking-wider">
+                            SKU: {product.sku}
+                          </span>
+                        </div>
+                      )}
                       <span className="absolute bottom-2 text-[10px] font-bold text-cyan-400 opacity-0 group-hover:opacity-100 transition-opacity">
                         Quick Blueprint View
                       </span>
@@ -1549,14 +1651,30 @@ export default function HomePage() {
               <X className="w-5 h-5" />
             </button>
 
-            <div className="flex items-center gap-2 mb-2">
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
               <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-cyan-400 bg-cyan-500/10 px-2.5 py-0.5 rounded border border-cyan-500/30">
                 {quickViewProduct.brand} • {quickViewProduct.category}
               </span>
               <span className="text-[10px] font-mono text-emerald-400 font-bold">
                 {quickViewProduct.warranty}
               </span>
+              {quickViewProduct.badge && (
+                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2.5 py-0.5 rounded flex items-center gap-1 shadow-sm">
+                  <Sparkles className="w-3 h-3 text-amber-400" />
+                  {quickViewProduct.badge}
+                </span>
+              )}
             </div>
+
+            {quickViewProduct.images && quickViewProduct.images[0] && !quickViewProduct.images[0].includes('placeholder.jpg') && (
+              <div className="w-full h-48 sm:h-64 rounded-2xl bg-slate-900/60 border border-slate-800 mb-4 flex items-center justify-center p-4 overflow-hidden">
+                <img
+                  src={quickViewProduct.images[0]}
+                  alt={quickViewProduct.name}
+                  className="max-h-full object-contain"
+                />
+              </div>
+            )}
 
             <h3 className="text-xl sm:text-2xl font-black text-white">{quickViewProduct.name}</h3>
 

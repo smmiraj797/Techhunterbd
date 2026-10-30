@@ -56,6 +56,7 @@ import {
   Box,
   Palette,
   RotateCcw,
+  Flame,
 } from 'lucide-react';
 
 import { products as initialProducts } from '@/data/products';
@@ -202,6 +203,10 @@ export default function AdminDashboardPage() {
     setTimeout(() => setToastMessage(null), 3000);
   };
 
+  // Storage Keys for multi-tab and storefront synchronization
+  const STORAGE_PRODUCTS_KEY = 'techhunter_custom_products';
+  const STORAGE_CATEGORIES_KEY = 'techhunter_custom_categories';
+
   // ─── DYNAMIC CATEGORIES & BRANDS REGISTRY ──────────────────────────────────
   const [categoryList, setCategoryList] = useState<string[]>(
     initialCategories.map((c) => c.name)
@@ -219,10 +224,21 @@ export default function AdminDashboardPage() {
     if (e) e.preventDefault();
     const trimmed = newCatInput.trim();
     if (!trimmed) return;
+    let nextCategories = categoryList;
     if (!categoryList.includes(trimmed)) {
-      setCategoryList((prev) => [...prev, trimmed]);
+      nextCategories = [...categoryList, trimmed];
+      setCategoryList(nextCategories);
       setFormCategory(trimmed);
-      showToast(`Category "${trimmed}" added!`);
+      showToast(`Category "${trimmed}" added and synced!`);
+      try {
+        localStorage.setItem(STORAGE_CATEGORIES_KEY, JSON.stringify(nextCategories));
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('storage_update'));
+          window.dispatchEvent(new StorageEvent('storage', { key: STORAGE_CATEGORIES_KEY }));
+        }
+      } catch (err) {
+        console.error('Storage sync error', err);
+      }
     } else {
       setFormCategory(trimmed);
     }
@@ -449,6 +465,48 @@ export default function AdminDashboardPage() {
   const [productSearch, setProductSearch] = useState('');
   const [productCategoryFilter, setProductCategoryFilter] = useState('All');
 
+  // Sync published products & categories to localStorage
+  useEffect(() => {
+    try {
+      const storedProds = localStorage.getItem(STORAGE_PRODUCTS_KEY);
+      if (storedProds) {
+        const parsed = JSON.parse(storedProds);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setProductList(parsed);
+        }
+      } else {
+        localStorage.setItem(STORAGE_PRODUCTS_KEY, JSON.stringify(initialProducts));
+      }
+
+      const storedCats = localStorage.getItem(STORAGE_CATEGORIES_KEY);
+      if (storedCats) {
+        const parsedCats = JSON.parse(storedCats);
+        if (Array.isArray(parsedCats) && parsedCats.length > 0) {
+          setCategoryList(parsedCats);
+        }
+      } else {
+        localStorage.setItem(STORAGE_CATEGORIES_KEY, JSON.stringify(initialCategories.map((c) => c.name)));
+      }
+    } catch (err) {
+      console.error('Failed to initialize from localStorage', err);
+    }
+  }, []);
+
+  const syncToStorage = (updatedProducts: Product[], updatedCategories?: string[]) => {
+    try {
+      localStorage.setItem(STORAGE_PRODUCTS_KEY, JSON.stringify(updatedProducts));
+      if (updatedCategories) {
+        localStorage.setItem(STORAGE_CATEGORIES_KEY, JSON.stringify(updatedCategories));
+      }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('storage_update'));
+        window.dispatchEvent(new StorageEvent('storage', { key: STORAGE_PRODUCTS_KEY }));
+      }
+    } catch (err) {
+      console.error('Failed to persist to localStorage', err);
+    }
+  };
+
   // Product Modals
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -479,6 +537,32 @@ export default function AdminDashboardPage() {
   const [formIsNew, setFormIsNew] = useState(true);
   const [formIsFlashSale, setFormIsFlashSale] = useState(false);
   const [formFlashSaleHours, setFormFlashSaleHours] = useState(24);
+  const [formCustomBadge, setFormCustomBadge] = useState('Official BD Warranty');
+  const [formTags, setFormTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState('');
+
+  const BADGE_PRESETS = [
+    'Official BD Warranty',
+    'Hot Deal',
+    'Flash Sale',
+    'Exclusive Flagship',
+    'Best Value',
+    'Top Rated',
+    'Limited Stock',
+  ];
+
+  const handleAddTag = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const clean = tagInput.trim().toLowerCase();
+    if (clean && !formTags.includes(clean)) {
+      setFormTags((prev) => [...prev, clean]);
+      setTagInput('');
+    }
+  };
+
+  const handleRemoveTag = (tagToRemove: string) => {
+    setFormTags((prev) => prev.filter((t) => t !== tagToRemove));
+  };
 
   // Media & Images
   const [featuredImage, setFeaturedImage] = useState<string>('/products/placeholder.jpg');
@@ -534,6 +618,8 @@ export default function AdminDashboardPage() {
     setFormIsNew(true);
     setFormIsFlashSale(false);
     setFormFlashSaleHours(24);
+    setFormCustomBadge('Official BD Warranty');
+    setFormTags([brandList[0]?.toLowerCase() || 'gadget', 'flagship']);
     setFeaturedImage(IMAGE_PRESETS[0].url);
     setGalleryImages([
       IMAGE_PRESETS[1].url,
@@ -596,6 +682,8 @@ export default function AdminDashboardPage() {
     setFormIsNew(product.isNew);
     setFormIsFlashSale(product.isFlashSale);
     setFormFlashSaleHours(24);
+    setFormCustomBadge(product.badge || '');
+    setFormTags(product.tags || []);
 
     // Images
     const imgs = product.images && product.images.length > 0 ? product.images : [IMAGE_PRESETS[0].url];
@@ -756,36 +844,39 @@ export default function AdminDashboardPage() {
 
     if (editingProduct) {
       // Edit existing product
-      setProductList((prev) =>
-        prev.map((p) =>
-          p.id === editingProduct.id
-            ? {
-                ...p,
-                // Moderators can only change Stock & Stock Status
-                name: isMod ? p.name : formName,
-                slug: isMod ? p.slug : (formSlug || p.slug),
-                brand: isMod ? p.brand : formBrand,
-                category: isMod ? p.category : formCategory,
-                subcategory: isMod ? p.subcategory : formSubcategory,
-                price: isMod ? p.price : Number(formPrice),
-                originalPrice: isMod ? p.originalPrice : Number(formOriginalPrice),
-                discount: Math.round(((formOriginalPrice - formPrice) / formOriginalPrice) * 100),
-                stockCount: Number(formStock),
-                inStock: formStockStatus !== 'outOfStock' && Number(formStock) > 0,
-                sku: isMod ? p.sku : formSku,
-                warranty: isMod ? p.warranty : formWarranty,
-                shortDescription: isMod ? p.shortDescription : formShortDesc,
-                description: isMod ? p.description : formDescription,
-                images: isMod ? p.images : allImages,
-                specs: isMod ? p.specs : specsRecord,
-                variants: isMod ? p.variants : variantsList,
-                isFeatured: isMod ? p.isFeatured : formIsFeatured,
-                isNew: isMod ? p.isNew : formIsNew,
-                isFlashSale: isMod ? p.isFlashSale : formIsFlashSale,
-              }
-            : p
-        )
+      const updatedProducts = productList.map((p) =>
+        p.id === editingProduct.id
+          ? {
+              ...p,
+              // Moderators can only change Stock & Stock Status
+              name: isMod ? p.name : formName,
+              slug: isMod ? p.slug : (formSlug || p.slug),
+              brand: isMod ? p.brand : formBrand,
+              category: isMod ? p.category : formCategory,
+              subcategory: isMod ? p.subcategory : formSubcategory,
+              price: isMod ? p.price : Number(formPrice),
+              originalPrice: isMod ? p.originalPrice : Number(formOriginalPrice),
+              discount: Math.round(((formOriginalPrice - formPrice) / formOriginalPrice) * 100),
+              stockCount: Number(formStock),
+              inStock: formStockStatus !== 'outOfStock' && Number(formStock) > 0,
+              sku: isMod ? p.sku : formSku,
+              warranty: isMod ? p.warranty : formWarranty,
+              shortDescription: isMod ? p.shortDescription : formShortDesc,
+              description: isMod ? p.description : formDescription,
+              images: isMod ? p.images : allImages,
+              specs: isMod ? p.specs : specsRecord,
+              variants: isMod ? p.variants : variantsList,
+              isFeatured: isMod ? p.isFeatured : formIsFeatured,
+              isNew: isMod ? p.isNew : formIsNew,
+              isFlashSale: isMod ? p.isFlashSale : formIsFlashSale,
+              flashSaleEndsAt: formIsFlashSale ? (p.flashSaleEndsAt || (Date.now() + formFlashSaleHours * 3600000)) : null,
+              badge: isMod ? p.badge : (formCustomBadge.trim() || undefined),
+              tags: isMod ? p.tags : (formTags.length > 0 ? formTags : [formBrand.toLowerCase(), formCategory.toLowerCase()]),
+            }
+          : p
       );
+      setProductList(updatedProducts);
+      syncToStorage(updatedProducts);
       showToast(
         isMod
           ? `Stock updated for "${editingProduct.name}" (${formStock} units)`
@@ -818,19 +909,22 @@ export default function AdminDashboardPage() {
         isFeatured: formIsFeatured,
         isFlashSale: formIsFlashSale,
         flashSaleEndsAt: formIsFlashSale ? Date.now() + formFlashSaleHours * 3600000 : null,
+        badge: formCustomBadge.trim() || undefined,
         rating: 5.0,
         reviewCount: 1,
         shortDescription: formShortDesc || `${formBrand} ${formName} with official warranty.`,
         description: formDescription || `${formName} authentic device imported directly for Bangladesh market.`,
         specs: specsRecord,
         variants: variantsList,
-        tags: [formBrand.toLowerCase(), formCategory.toLowerCase()],
+        tags: formTags.length > 0 ? formTags : [formBrand.toLowerCase(), formCategory.toLowerCase()],
         warranty: formWarranty,
         sku: formSku || `TH-${formBrand.slice(0, 3).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`,
         createdAt: new Date().toISOString(),
       };
 
-      setProductList([newProduct, ...productList]);
+      const updatedProducts = [newProduct, ...productList];
+      setProductList(updatedProducts);
+      syncToStorage(updatedProducts);
       showToast(`WooCommerce Success: "${formName}" deployed to catalog!`);
       setIsEditorOpen(false);
     }
@@ -844,7 +938,9 @@ export default function AdminDashboardPage() {
     }
     if (!deletingProductId) return;
     const target = productList.find((p) => p.id === deletingProductId);
-    setProductList((prev) => prev.filter((p) => p.id !== deletingProductId));
+    const updatedProducts = productList.filter((p) => p.id !== deletingProductId);
+    setProductList(updatedProducts);
+    syncToStorage(updatedProducts);
     showToast(`Removed product "${target?.name || deletingProductId}"`);
     setDeletingProductId(null);
   };
@@ -3176,34 +3272,187 @@ export default function AdminDashboardPage() {
                   )}
                 </div>
 
-                {/* 5. STOREFRONT BADGES & TAGS */}
-                <div className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-xl space-y-3">
-                  <div className="pb-2 border-b border-slate-800">
-                    <span className="text-xs font-black uppercase text-white tracking-wider">Product Badges</span>
+                {/* 5. STOREFRONT BADGES & PROMOTIONAL TAGS */}
+                <div className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-xl space-y-4">
+                  <div className="pb-2 border-b border-slate-800 flex items-center justify-between">
+                    <span className="text-xs font-black uppercase text-white tracking-wider flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                      Storefront Badges & Flags
+                    </span>
+                    {formCustomBadge && (
+                      <span className="bg-gradient-to-r from-amber-500/20 to-orange-500/20 text-amber-300 border border-amber-500/40 text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider">
+                        {formCustomBadge}
+                      </span>
+                    )}
                   </div>
 
-                  <div className="space-y-2.5">
-                    <label className="flex items-center justify-between text-xs cursor-pointer">
-                      <span className="text-slate-300">Hot Flagship Drop (isFeatured)</span>
+                  {/* Custom Promotional Badge */}
+                  <div className="space-y-2">
+                    <label className="block text-[11px] font-bold text-slate-300">
+                      Promotional Ribbon / Custom Badge:
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        disabled={currentUser?.role === 'MODERATOR'}
+                        placeholder="e.g. Official BD Warranty, Hot Deal"
+                        value={formCustomBadge}
+                        onChange={(e) => setFormCustomBadge(e.target.value)}
+                        className={`flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-amber-400 ${
+                          currentUser?.role === 'MODERATOR' ? 'opacity-60 cursor-not-allowed' : ''
+                        }`}
+                      />
+                      {formCustomBadge && currentUser?.role !== 'MODERATOR' && (
+                        <button
+                          type="button"
+                          onClick={() => setFormCustomBadge('')}
+                          className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white text-xs font-bold"
+                          title="Clear Badge"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Badge Preset Suggestions */}
+                    {currentUser?.role !== 'MODERATOR' && (
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        {BADGE_PRESETS.map((preset) => (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() => setFormCustomBadge(preset)}
+                            className={`text-[10px] font-bold px-2 py-1 rounded-md border transition-all ${
+                              formCustomBadge === preset
+                                ? 'bg-amber-500 text-black border-amber-400 font-black shadow-sm'
+                                : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+                            }`}
+                          >
+                            {preset}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Flash Sale Toggle */}
+                  <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <Flame className="w-4 h-4 text-rose-500" />
+                        <div>
+                          <span className="text-xs font-bold text-white block">Midnight Flash Sale</span>
+                          <span className="text-[10px] text-slate-400">Features in homepage countdown marquee</span>
+                        </div>
+                      </div>
+                      <input
+                        type="checkbox"
+                        disabled={currentUser?.role === 'MODERATOR'}
+                        checked={formIsFlashSale}
+                        onChange={(e) => setFormIsFlashSale(e.target.checked)}
+                        className="rounded bg-slate-900 border-slate-700 text-rose-500 focus:ring-0 cursor-pointer w-4 h-4"
+                      />
+                    </div>
+                    {formIsFlashSale && (
+                      <div className="flex items-center justify-between pt-2 border-t border-slate-900 text-xs">
+                        <span className="text-slate-400 text-[11px]">Countdown Timer:</span>
+                        <div className="flex items-center gap-1.5">
+                          {[12, 24, 48].map((hrs) => (
+                            <button
+                              key={hrs}
+                              type="button"
+                              onClick={() => setFormFlashSaleHours(hrs)}
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                formFlashSaleHours === hrs
+                                  ? 'bg-rose-500 text-white'
+                                  : 'bg-slate-900 text-slate-400 hover:text-white'
+                              }`}
+                            >
+                              {hrs}h
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Feature & New arrival flags */}
+                  <div className="space-y-2 pt-1">
+                    <label className="flex items-center justify-between text-xs cursor-pointer p-2 rounded-xl bg-slate-950/50 border border-slate-800/80 hover:border-slate-700">
+                      <div>
+                        <span className="text-white font-bold block">Hot Flagship Drop (isFeatured)</span>
+                        <span className="text-[10px] text-slate-400">Highlighted on homepage showcase carousel</span>
+                      </div>
                       <input
                         type="checkbox"
                         disabled={currentUser?.role === 'MODERATOR'}
                         checked={formIsFeatured}
                         onChange={(e) => setFormIsFeatured(e.target.checked)}
-                        className="rounded bg-slate-950 border-slate-800 text-cyan-400 focus:ring-0 cursor-pointer"
+                        className="rounded bg-slate-900 border-slate-700 text-cyan-400 focus:ring-0 cursor-pointer w-4 h-4"
                       />
                     </label>
 
-                    <label className="flex items-center justify-between text-xs cursor-pointer">
-                      <span className="text-slate-300">Brand New Arrival (isNew)</span>
+                    <label className="flex items-center justify-between text-xs cursor-pointer p-2 rounded-xl bg-slate-950/50 border border-slate-800/80 hover:border-slate-700">
+                      <div>
+                        <span className="text-white font-bold block">Brand New Arrival (isNew)</span>
+                        <span className="text-[10px] text-slate-400">Shows glowing cyan 'NEW' badge</span>
+                      </div>
                       <input
                         type="checkbox"
                         disabled={currentUser?.role === 'MODERATOR'}
                         checked={formIsNew}
                         onChange={(e) => setFormIsNew(e.target.checked)}
-                        className="rounded bg-slate-950 border-slate-800 text-cyan-400 focus:ring-0 cursor-pointer"
+                        className="rounded bg-slate-900 border-slate-700 text-cyan-400 focus:ring-0 cursor-pointer w-4 h-4"
                       />
                     </label>
+                  </div>
+
+                  {/* Promotional Tags Manager */}
+                  <div className="pt-2 border-t border-slate-800/80 space-y-2">
+                    <span className="text-[11px] font-bold text-slate-300 block">Search & Filter Tags:</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {formTags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 border border-slate-700 flex items-center gap-1"
+                        >
+                          #{tag}
+                          {currentUser?.role !== 'MODERATOR' && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveTag(tag)}
+                              className="text-slate-500 hover:text-rose-400 font-bold"
+                            >
+                              ×
+                            </button>
+                          )}
+                        </span>
+                      ))}
+                    </div>
+                    {currentUser?.role !== 'MODERATOR' && (
+                      <div className="flex gap-2 pt-1">
+                        <input
+                          type="text"
+                          placeholder="Add tag (e.g. flagship, amoled, 5g)"
+                          value={tagInput}
+                          onChange={(e) => setTagInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleAddTag();
+                            }
+                          }}
+                          className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white outline-none focus:border-cyan-400"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleAddTag()}
+                          className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold"
+                        >
+                          + Tag
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

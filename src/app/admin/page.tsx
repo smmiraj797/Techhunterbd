@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import {
   LayoutDashboard,
@@ -43,13 +43,26 @@ import {
   UserPlus,
   BadgeAlert,
   Sliders,
+  UploadCloud,
+  Image as ImageIcon,
+  FolderPlus,
+  Tag,
+  Layers,
+  Sparkles,
+  Link as LinkIcon,
+  HelpCircle,
+  FileText,
+  SlidersHorizontal,
+  Box,
+  Palette,
+  RotateCcw,
 } from 'lucide-react';
 
 import { products as initialProducts } from '@/data/products';
-import { categories } from '@/data/categories';
-import { brands } from '@/data/brands';
+import { categories as initialCategories } from '@/data/categories';
+import { brands as initialBrands } from '@/data/brands';
 import { formatPrice } from '@/lib/utils';
-import { Product } from '@/types';
+import { Product, ProductVariant } from '@/types';
 
 // ─── AUTH & RBAC TYPES ────────────────────────────────────────────────────────
 export type AdminRole = 'SUPER_ADMIN' | 'MARKETING_MANAGER' | 'MODERATOR';
@@ -160,6 +173,12 @@ interface Customer {
   lastOrderDate: string;
 }
 
+interface SpecRow {
+  id: string;
+  key: string;
+  value: string;
+}
+
 export default function AdminDashboardPage() {
   // ─── AUTHENTICATION STATE ──────────────────────────────────────────────────
   const [staffAccounts, setStaffAccounts] = useState<StaffUser[]>(INITIAL_STAFF_ACCOUNTS);
@@ -181,6 +200,49 @@ export default function AdminDashboardPage() {
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  // ─── DYNAMIC CATEGORIES & BRANDS REGISTRY ──────────────────────────────────
+  const [categoryList, setCategoryList] = useState<string[]>(
+    initialCategories.map((c) => c.name)
+  );
+  const [brandList, setBrandList] = useState<string[]>(
+    initialBrands.map((b) => b.name)
+  );
+
+  const [newCatInput, setNewCatInput] = useState('');
+  const [showAddCatInput, setShowAddCatInput] = useState(false);
+  const [newBrandInput, setNewBrandInput] = useState('');
+  const [showAddBrandInput, setShowAddBrandInput] = useState(false);
+
+  const handleAddNewCategory = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = newCatInput.trim();
+    if (!trimmed) return;
+    if (!categoryList.includes(trimmed)) {
+      setCategoryList((prev) => [...prev, trimmed]);
+      setFormCategory(trimmed);
+      showToast(`Category "${trimmed}" added!`);
+    } else {
+      setFormCategory(trimmed);
+    }
+    setNewCatInput('');
+    setShowAddCatInput(false);
+  };
+
+  const handleAddNewBrand = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = newBrandInput.trim();
+    if (!trimmed) return;
+    if (!brandList.includes(trimmed)) {
+      setBrandList((prev) => [...prev, trimmed]);
+      setFormBrand(trimmed);
+      showToast(`Brand "${trimmed}" added!`);
+    } else {
+      setFormBrand(trimmed);
+    }
+    setNewBrandInput('');
+    setShowAddBrandInput(false);
   };
 
   // Tab definitions with strict RBAC permission mapping
@@ -382,54 +444,273 @@ export default function AdminDashboardPage() {
     showToast(`Removed staff account: ${target?.name}`);
   };
 
-  // ─── 1. PRODUCTS STATE & CRUD ──────────────────────────────────────────────
+  // ─── 1. PRODUCTS STATE & WOOCOMMERCE-STYLE CRUD ────────────────────────────
   const [productList, setProductList] = useState<Product[]>(initialProducts);
   const [productSearch, setProductSearch] = useState('');
   const [productCategoryFilter, setProductCategoryFilter] = useState('All');
 
   // Product Modals
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
 
-  // Add/Edit Form State
+  // WooCommerce Product Data Tabs
+  type WooTab = 'general' | 'inventory' | 'specs' | 'variants' | 'shipping';
+  const [wooActiveTab, setWooActiveTab] = useState<WooTab>('general');
+
+  // Form Fields
   const [formName, setFormName] = useState('');
+  const [formSlug, setFormSlug] = useState('');
   const [formBrand, setFormBrand] = useState('Samsung');
   const [formCategory, setFormCategory] = useState('Smartphones');
+  const [formSubcategory, setFormSubcategory] = useState('Flagships');
   const [formPrice, setFormPrice] = useState<number>(10000);
   const [formOriginalPrice, setFormOriginalPrice] = useState<number>(12000);
   const [formStock, setFormStock] = useState<number>(20);
-  const [formWarranty, setFormWarranty] = useState('1 Year Official Bangladesh Warranty');
+  const [formStockStatus, setFormStockStatus] = useState<'inStock' | 'outOfStock' | 'preorder'>('inStock');
+  const [formSku, setFormSku] = useState('');
+  const [formWarranty, setFormWarranty] = useState('1 Year Official Bangladesh Brand Warranty');
+  const [formDeliveryEst, setFormDeliveryEst] = useState('24h Express Delivery in Dhaka');
   const [formShortDesc, setFormShortDesc] = useState('');
+  const [formDescription, setFormDescription] = useState('');
+  
+  // Badges & Flags
+  const [formIsFeatured, setFormIsFeatured] = useState(false);
+  const [formIsNew, setFormIsNew] = useState(true);
+  const [formIsFlashSale, setFormIsFlashSale] = useState(false);
+  const [formFlashSaleHours, setFormFlashSaleHours] = useState(24);
 
+  // Media & Images
+  const [featuredImage, setFeaturedImage] = useState<string>('/products/placeholder.jpg');
+  const [galleryImages, setGalleryImages] = useState<string[]>([]);
+  const [imageUrlInput, setImageUrlInput] = useState('');
+  const [isDraggingImage, setIsDraggingImage] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Specs & Variants
+  const [specRows, setSpecRows] = useState<SpecRow[]>([]);
+  const [variantsList, setVariantsList] = useState<ProductVariant[]>([]);
+
+  // Demo Image Presets
+  const IMAGE_PRESETS = [
+    { label: 'Galaxy S25', url: 'https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?auto=format&fit=crop&w=800&q=80' },
+    { label: 'MacBook Air', url: 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?auto=format&fit=crop&w=800&q=80' },
+    { label: 'Sony Headset', url: 'https://images.unsplash.com/photo-1546435770-a3e426bf472b?auto=format&fit=crop&w=800&q=80' },
+    { label: 'Keychron K8', url: 'https://images.unsplash.com/photo-1587829741301-dc798b83add3?auto=format&fit=crop&w=800&q=80' },
+    { label: 'PS5 Console', url: 'https://images.unsplash.com/photo-1606813907291-d86efa9b94db?auto=format&fit=crop&w=800&q=80' },
+  ];
+
+  // Auto-generate slug from title
+  const handleNameChange = (name: string) => {
+    setFormName(name);
+    if (!editingProduct) {
+      setFormSlug(name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''));
+    }
+  };
+
+  // Open "Add New Gadget" modal
   const openAddModal = () => {
     if (currentUser?.role === 'MODERATOR') {
       showToast('Permission Denied: Moderators cannot add new products.');
       return;
     }
+    setEditingProduct(null);
     setFormName('');
-    setFormBrand('Samsung');
-    setFormCategory('Smartphones');
+    setFormSlug('');
+    setFormBrand(brandList[0] || 'Samsung');
+    setFormCategory(categoryList[0] || 'Smartphones');
+    setFormSubcategory('Flagships');
     setFormPrice(15000);
-    setFormOriginalPrice(17000);
+    setFormOriginalPrice(17500);
     setFormStock(25);
-    setFormWarranty('1 Year Official Bangladesh Warranty');
-    setFormShortDesc('');
-    setIsAddModalOpen(true);
+    setFormStockStatus('inStock');
+    setFormSku(`TH-${(brandList[0] || 'SAM').slice(0, 3).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`);
+    setFormWarranty('1 Year Official Bangladesh Brand Warranty');
+    setFormDeliveryEst('24h Express Delivery inside Dhaka');
+    setFormShortDesc('Flagship device imported with official Bangladesh warranty support.');
+    setFormDescription('Official authentic consumer electronics gadget imported for the Bangladeshi tech enthusiast community. Features high build quality, factory seals, and dedicated customer support.');
+    setFormIsFeatured(false);
+    setFormIsNew(true);
+    setFormIsFlashSale(false);
+    setFormFlashSaleHours(24);
+    setFeaturedImage(IMAGE_PRESETS[0].url);
+    setGalleryImages([
+      IMAGE_PRESETS[1].url,
+      IMAGE_PRESETS[2].url,
+    ]);
+    setImageUrlInput('');
+    setWooActiveTab('general');
+
+    // Default Tech Specs
+    setSpecRows([
+      { id: '1', key: 'Display', value: '6.7-inch AMOLED, 120Hz Refresh Rate' },
+      { id: '2', key: 'Processor', value: 'Flagship Next-Gen Octa-Core Chipset' },
+      { id: '3', key: 'Battery', value: '5000mAh with 45W Fast Charging' },
+      { id: '4', key: 'Camera', value: 'High-Res Optical Stabilization Sensor' },
+    ]);
+
+    // Default Variants
+    setVariantsList([
+      {
+        id: 'var-1',
+        name: 'Standard Color (Black / 256GB)',
+        type: 'storage',
+        value: '256GB',
+        priceModifier: 0,
+        inStock: true,
+        sku: 'TH-VAR-256',
+      },
+      {
+        id: 'var-2',
+        name: 'Performance Tier (512GB)',
+        type: 'storage',
+        value: '512GB',
+        priceModifier: 15000,
+        inStock: true,
+        sku: 'TH-VAR-512',
+      },
+    ]);
+
+    setIsEditorOpen(true);
   };
 
+  // Open "Edit Product" modal
   const openEditModal = (product: Product) => {
     setEditingProduct(product);
     setFormName(product.name);
+    setFormSlug(product.slug);
     setFormBrand(product.brand);
     setFormCategory(product.category);
+    setFormSubcategory(product.subcategory || 'Flagship');
     setFormPrice(product.price);
     setFormOriginalPrice(product.originalPrice);
     setFormStock(product.stockCount);
+    setFormStockStatus(product.inStock ? (product.stockCount > 0 ? 'inStock' : 'outOfStock') : 'outOfStock');
+    setFormSku(product.sku);
     setFormWarranty(product.warranty);
+    setFormDeliveryEst('24h Express Delivery inside Dhaka');
     setFormShortDesc(product.shortDescription);
+    setFormDescription(product.description);
+    setFormIsFeatured(product.isFeatured);
+    setFormIsNew(product.isNew);
+    setFormIsFlashSale(product.isFlashSale);
+    setFormFlashSaleHours(24);
+
+    // Images
+    const imgs = product.images && product.images.length > 0 ? product.images : [IMAGE_PRESETS[0].url];
+    setFeaturedImage(imgs[0]);
+    setGalleryImages(imgs.slice(1));
+    setImageUrlInput('');
+    setWooActiveTab('general');
+
+    // Parse Specs
+    const parsedSpecs: SpecRow[] = Object.entries(product.specs || {}).map(([key, value], idx) => ({
+      id: `spec-${idx}`,
+      key,
+      value: String(value),
+    }));
+    setSpecRows(parsedSpecs.length > 0 ? parsedSpecs : [
+      { id: '1', key: 'Display', value: 'High-Res Panel' },
+      { id: '2', key: 'Warranty', value: product.warranty },
+    ]);
+
+    // Parse Variants
+    setVariantsList(product.variants && product.variants.length > 0 ? product.variants : [
+      {
+        id: `var-${product.id}-1`,
+        name: 'Standard Edition',
+        type: 'color',
+        value: 'Official Color',
+        priceModifier: 0,
+        inStock: product.inStock,
+        sku: product.sku,
+      },
+    ]);
+
+    setIsEditorOpen(true);
   };
 
+  // Image Upload Handlers
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    Array.from(files).forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const result = event.target?.result as string;
+        if (result) {
+          if (!featuredImage || featuredImage === '/products/placeholder.jpg') {
+            setFeaturedImage(result);
+          } else {
+            setGalleryImages((prev) => [result, ...prev]);
+          }
+          showToast(`Loaded "${file.name}"`);
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleAddImageUrl = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!imageUrlInput.trim()) return;
+    if (!featuredImage || featuredImage === '/products/placeholder.jpg') {
+      setFeaturedImage(imageUrlInput.trim());
+    } else {
+      setGalleryImages((prev) => [...prev, imageUrlInput.trim()]);
+    }
+    setImageUrlInput('');
+    showToast('Image URL appended to media collection');
+  };
+
+  const handleSetMainImage = (url: string) => {
+    if (url === featuredImage) return;
+    setGalleryImages((prev) => [featuredImage, ...prev.filter((img) => img !== url)]);
+    setFeaturedImage(url);
+    showToast('Updated main featured thumbnail');
+  };
+
+  const handleRemoveGalleryImage = (index: number) => {
+    setGalleryImages((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  // Specs Rows Handlers
+  const handleAddSpecRow = () => {
+    setSpecRows((prev) => [...prev, { id: `spec-${Date.now()}`, key: '', value: '' }]);
+  };
+
+  const handleUpdateSpecRow = (id: string, field: 'key' | 'value', val: string) => {
+    setSpecRows((prev) => prev.map((s) => (s.id === id ? { ...s, [field]: val } : s)));
+  };
+
+  const handleRemoveSpecRow = (id: string) => {
+    setSpecRows((prev) => prev.filter((s) => s.id !== id));
+  };
+
+  // Variants Handlers
+  const handleAddVariant = () => {
+    const newVar: ProductVariant = {
+      id: `var-${Date.now().toString().slice(-4)}`,
+      name: 'Variant Option',
+      type: 'storage',
+      value: '256GB',
+      priceModifier: 0,
+      inStock: true,
+      sku: `${formSku}-VAR-${Math.floor(10 + Math.random() * 90)}`,
+    };
+    setVariantsList((prev) => [...prev, newVar]);
+  };
+
+  const handleUpdateVariant = (id: string, field: keyof ProductVariant, val: any) => {
+    setVariantsList((prev) => prev.map((v) => (v.id === id ? { ...v, [field]: val } : v)));
+  };
+
+  const handleRemoveVariant = (id: string) => {
+    setVariantsList((prev) => prev.filter((v) => v.id !== id));
+  };
+
+  // Save Product (WooCommerce Suite)
   const handleSaveProduct = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formName.trim()) {
@@ -437,25 +718,47 @@ export default function AdminDashboardPage() {
       return;
     }
 
-    if (editingProduct) {
-      // Moderator restriction: Stock only
-      const isMod = currentUser?.role === 'MODERATOR';
+    // Convert specRows back to Record<string, string>
+    const specsRecord: Record<string, string> = {};
+    specRows.forEach((row) => {
+      if (row.key.trim()) {
+        specsRecord[row.key.trim()] = row.value.trim();
+      }
+    });
 
+    // Assemble all images
+    const allImages = [featuredImage, ...galleryImages].filter(Boolean);
+
+    const isMod = currentUser?.role === 'MODERATOR';
+
+    if (editingProduct) {
+      // Edit existing product
       setProductList((prev) =>
         prev.map((p) =>
           p.id === editingProduct.id
             ? {
                 ...p,
-                // If moderator, preserve original price/name/category, only update stock
+                // Moderators can only change Stock & Stock Status
                 name: isMod ? p.name : formName,
+                slug: isMod ? p.slug : (formSlug || p.slug),
                 brand: isMod ? p.brand : formBrand,
                 category: isMod ? p.category : formCategory,
+                subcategory: isMod ? p.subcategory : formSubcategory,
                 price: isMod ? p.price : Number(formPrice),
                 originalPrice: isMod ? p.originalPrice : Number(formOriginalPrice),
+                discount: Math.round(((formOriginalPrice - formPrice) / formOriginalPrice) * 100),
                 stockCount: Number(formStock),
-                inStock: Number(formStock) > 0,
+                inStock: formStockStatus !== 'outOfStock' && Number(formStock) > 0,
+                sku: isMod ? p.sku : formSku,
                 warranty: isMod ? p.warranty : formWarranty,
                 shortDescription: isMod ? p.shortDescription : formShortDesc,
+                description: isMod ? p.description : formDescription,
+                images: isMod ? p.images : allImages,
+                specs: isMod ? p.specs : specsRecord,
+                variants: isMod ? p.variants : variantsList,
+                isFeatured: isMod ? p.isFeatured : formIsFeatured,
+                isNew: isMod ? p.isNew : formIsNew,
+                isFlashSale: isMod ? p.isFlashSale : formIsFlashSale,
               }
             : p
         )
@@ -463,52 +766,50 @@ export default function AdminDashboardPage() {
       showToast(
         isMod
           ? `Stock updated for "${editingProduct.name}" (${formStock} units)`
-          : `Updated "${formName}" successfully!`
+          : `Published changes for "${formName}"`
       );
+      setIsEditorOpen(false);
       setEditingProduct(null);
     } else {
-      // Create new (Super Admin only)
+      // Deploy brand new product
       if (currentUser?.role === 'MODERATOR') {
-        showToast('Permission Denied: Only Super Admin can deploy new gadgets.');
+        showToast('Permission Denied: Moderators cannot publish new products.');
         return;
       }
+
       const newId = `prod-${Date.now().toString().slice(-4)}`;
       const newProduct: Product = {
         id: newId,
-        slug: formName.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+        slug: formSlug || formName.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
         name: formName,
         brand: formBrand,
         category: formCategory,
-        subcategory: 'Flagship',
-        images: ['/products/placeholder.jpg'],
+        subcategory: formSubcategory,
+        images: allImages.length > 0 ? allImages : ['/products/placeholder.jpg'],
         price: Number(formPrice),
         originalPrice: Number(formOriginalPrice),
-        discount: Math.round(((formOriginalPrice - formPrice) / formOriginalPrice) * 100),
-        inStock: Number(formStock) > 0,
+        discount: Math.max(0, Math.round(((formOriginalPrice - formPrice) / formOriginalPrice) * 100)),
+        inStock: formStockStatus !== 'outOfStock' && Number(formStock) > 0,
         stockCount: Number(formStock),
-        isNew: true,
-        isFeatured: false,
-        isFlashSale: false,
-        flashSaleEndsAt: null,
+        isNew: formIsNew,
+        isFeatured: formIsFeatured,
+        isFlashSale: formIsFlashSale,
+        flashSaleEndsAt: formIsFlashSale ? Date.now() + formFlashSaleHours * 3600000 : null,
         rating: 5.0,
         reviewCount: 1,
         shortDescription: formShortDesc || `${formBrand} ${formName} with official warranty.`,
-        description: `${formName} authentic device imported directly for Bangladesh market.`,
-        specs: {
-          Brand: formBrand,
-          Category: formCategory,
-          Warranty: formWarranty,
-          Status: 'Brand New In Box',
-        },
-        variants: [],
+        description: formDescription || `${formName} authentic device imported directly for Bangladesh market.`,
+        specs: specsRecord,
+        variants: variantsList,
         tags: [formBrand.toLowerCase(), formCategory.toLowerCase()],
         warranty: formWarranty,
-        sku: `TH-${formBrand.slice(0, 3).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`,
+        sku: formSku || `TH-${formBrand.slice(0, 3).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`,
         createdAt: new Date().toISOString(),
       };
+
       setProductList([newProduct, ...productList]);
-      showToast(`Added "${formName}" to catalog!`);
-      setIsAddModalOpen(false);
+      showToast(`WooCommerce Success: "${formName}" deployed to catalog!`);
+      setIsEditorOpen(false);
     }
   };
 
@@ -755,12 +1056,10 @@ export default function AdminDashboardPage() {
   if (!currentUser) {
     return (
       <div className="min-h-screen bg-[#090D16] text-slate-100 flex flex-col justify-center items-center p-4 relative overflow-hidden font-sans">
-        {/* Futuristic Background Glows */}
         <div className="absolute top-1/4 -left-32 w-96 h-96 bg-blue-600/15 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-1/4 -right-32 w-96 h-96 bg-cyan-500/15 rounded-full blur-3xl pointer-events-none" />
 
         <div className="w-full max-w-md z-10 space-y-6">
-          {/* Header Brand */}
           <div className="text-center space-y-2">
             <Link href="/" className="inline-flex items-center gap-2 mb-2 group">
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center p-0.5 shadow-xl shadow-cyan-500/20 group-hover:scale-105 transition-transform">
@@ -783,7 +1082,6 @@ export default function AdminDashboardPage() {
             </p>
           </div>
 
-          {/* Login Card */}
           <div className="p-7 rounded-3xl bg-slate-950/90 border border-slate-800 shadow-2xl backdrop-blur-xl relative">
             <form onSubmit={handleLogin} className="space-y-4">
               {loginError && (
@@ -832,7 +1130,6 @@ export default function AdminDashboardPage() {
               </button>
             </form>
 
-            {/* Quick Demo Fill Buttons */}
             <div className="mt-6 pt-5 border-t border-slate-800/80">
               <span className="text-[10px] font-mono uppercase text-slate-400 font-bold block mb-2.5 text-center">
                 Instant Demo Access (Click to Test Role)
@@ -899,7 +1196,6 @@ export default function AdminDashboardPage() {
             </div>
           </div>
 
-          {/* Back to store */}
           <div className="text-center">
             <Link
               href="/"
@@ -969,7 +1265,6 @@ export default function AdminDashboardPage() {
               </div>
             </div>
 
-            {/* Role Badge */}
             <div className="flex items-center justify-between pt-2 border-t border-slate-800/60">
               <span
                 className={`inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-md border ${currentRoleBadge.classes}`}
@@ -978,7 +1273,7 @@ export default function AdminDashboardPage() {
                 {currentRoleBadge.label}
               </span>
 
-              {/* Quick switch demo role */}
+              {/* Fast Switch Role Dropdown */}
               <div className="relative group">
                 <button
                   type="button"
@@ -1106,7 +1401,7 @@ export default function AdminDashboardPage() {
             <div className="flex items-center gap-2.5">
               <h1 className="text-2xl font-black tracking-tight capitalize text-white">
                 {activeTab === 'overview' && 'Executive Metrics & Sales Overview'}
-                {activeTab === 'products' && 'Product Inventory Catalog & Stock'}
+                {activeTab === 'products' && 'Product Inventory & WooCommerce Manager'}
                 {activeTab === 'orders' && 'Order Processing & Courier Dispatch'}
                 {activeTab === 'customers' && 'Registered Bangladeshi Customers'}
                 {activeTab === 'banners' && 'Promotion Banners & Flash Sale Engine'}
@@ -1127,7 +1422,7 @@ export default function AdminDashboardPage() {
           <div className="flex items-center gap-3">
             <span className="flex items-center gap-2 text-xs font-mono font-bold text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-xl border border-emerald-500/30">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              RBAC Guard: Enforced
+              Catalog Engine: Synced
             </span>
           </div>
         </div>
@@ -1135,9 +1430,7 @@ export default function AdminDashboardPage() {
         {/* ─── TAB 1: OVERVIEW & METRICS ────────────────────────────────────── */}
         {activeTab === 'overview' && (
           <div className="space-y-8">
-            {/* 4 Stat Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-              {/* Total Sales: Hidden if user is Moderator; Visible for Super Admin and Marketing Manager */}
               <div className="p-5 rounded-2xl bg-slate-900/80 border border-slate-800 shadow-lg flex items-center justify-between">
                 <div>
                   <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Total Sales</span>
@@ -1205,9 +1498,7 @@ export default function AdminDashboardPage() {
               </div>
             </div>
 
-            {/* Quick Actions & Recent Orders Table */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Recent Orders List (2 Cols) */}
               <div className="lg:col-span-2 p-6 rounded-2xl bg-slate-900/80 border border-slate-800 shadow-xl">
                 <div className="flex items-center justify-between pb-4 border-b border-slate-800">
                   <h3 className="font-bold text-sm text-white flex items-center gap-2">
@@ -1251,7 +1542,6 @@ export default function AdminDashboardPage() {
                 </div>
               </div>
 
-              {/* Low Stock Watchlist (1 Col) */}
               <div className="p-6 rounded-2xl bg-slate-900/80 border border-slate-800 shadow-xl">
                 <div className="flex items-center justify-between pb-4 border-b border-slate-800">
                   <h3 className="font-bold text-sm text-white flex items-center gap-2">
@@ -1294,16 +1584,15 @@ export default function AdminDashboardPage() {
           </div>
         )}
 
-        {/* ─── TAB 2: PRODUCT MANAGEMENT (CRUD & STOCK) ────────────────────── */}
+        {/* ─── TAB 2: PRODUCT MANAGEMENT & WOOCOMMERCE SUITE ────────────────── */}
         {activeTab === 'products' && (
           <div className="space-y-6">
-            {/* Role Advisory Banner for Moderator */}
             {currentUser.role === 'MODERATOR' && (
               <div className="p-3.5 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <ShieldCheck className="w-4 h-4 text-cyan-400 flex-shrink-0" />
                   <span>
-                    <strong>Moderator Permissions Active:</strong> You can view inventory and adjust Stock Level numbers. Pricing and deletion are locked to Super Admin.
+                    <strong>Moderator Clearance:</strong> You can inspect specs, media, and adjust stock counts. Price modifications and product deletions are guarded.
                   </span>
                 </div>
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-500/20 font-bold">
@@ -1315,19 +1604,17 @@ export default function AdminDashboardPage() {
             {/* Action Bar */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-2xl bg-slate-900/90 border border-slate-800">
               <div className="flex flex-1 items-center gap-3 w-full sm:w-auto">
-                {/* Search */}
                 <div className="relative flex-1 max-w-sm">
                   <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
                   <input
                     type="text"
-                    placeholder="Search by name, brand, SKU..."
+                    placeholder="Search by title, brand, SKU..."
                     value={productSearch}
                     onChange={(e) => setProductSearch(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 outline-none focus:border-cyan-400"
                   />
                 </div>
 
-                {/* Category Filter */}
                 <div className="flex items-center gap-1.5">
                   <Filter className="w-4 h-4 text-slate-400" />
                   <select
@@ -1335,28 +1622,25 @@ export default function AdminDashboardPage() {
                     onChange={(e) => setProductCategoryFilter(e.target.value)}
                     className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-300 outline-none focus:border-cyan-400"
                   >
-                    <option value="All">All Categories</option>
-                    {categories.map((c) => (
-                      <option key={c.id} value={c.name}>
-                        {c.name}
-                      </option>
+                    <option value="All">All Categories ({categoryList.length})</option>
+                    {categoryList.map((c) => (
+                      <option key={c} value={c}>{c}</option>
                     ))}
                   </select>
                 </div>
               </div>
 
-              {/* Add Product Button (Only Super Admin can deploy new gadgets) */}
               {currentUser.role === 'SUPER_ADMIN' ? (
                 <button
                   onClick={openAddModal}
                   className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-black font-extrabold text-xs shadow-lg hover:scale-105 transition-all flex items-center gap-2 flex-shrink-0"
                 >
                   <Plus className="w-4 h-4" />
-                  Add New Gadget
+                  + Add New Product (WooCommerce Suite)
                 </button>
               ) : (
                 <div className="flex items-center gap-1.5 text-xs text-slate-500 font-mono px-3 py-2 rounded-xl bg-slate-950 border border-slate-800">
-                  <Lock className="w-3.5 h-3.5" /> Add Gadget Locked
+                  <Lock className="w-3.5 h-3.5" /> Add Product Locked
                 </div>
               )}
             </div>
@@ -1367,13 +1651,12 @@ export default function AdminDashboardPage() {
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
                     <tr className="border-b border-slate-800 bg-slate-950/80 font-mono text-slate-400">
-                      <th className="p-3.5">SKU & Product</th>
-                      <th className="p-3.5">Category</th>
-                      <th className="p-3.5">Selling Price</th>
-                      <th className="p-3.5">MSRP</th>
+                      <th className="p-3.5">Gadget & Thumbnail</th>
+                      <th className="p-3.5">Brand & Category</th>
+                      <th className="p-3.5">Price & MSRP</th>
                       <th className="p-3.5">Stock Level</th>
-                      <th className="p-3.5">Warranty</th>
-                      <th className="p-3.5 text-right">Actions</th>
+                      <th className="p-3.5">Badges</th>
+                      <th className="p-3.5 text-right">WooCommerce Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60">
@@ -1381,8 +1664,20 @@ export default function AdminDashboardPage() {
                       <tr key={product.id} className="hover:bg-slate-850/50 transition-colors">
                         <td className="p-3.5">
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center font-black text-cyan-400 text-xs flex-shrink-0">
-                              {product.brand[0]}
+                            <div className="w-12 h-12 rounded-xl bg-slate-850 border border-slate-700/80 overflow-hidden flex-shrink-0 relative flex items-center justify-center">
+                              {product.images && product.images[0] ? (
+                                <img
+                                  src={product.images[0]}
+                                  alt={product.name}
+                                  className="w-full h-full object-cover"
+                                  onError={(e) => {
+                                    // Fallback if broken URL
+                                    (e.target as HTMLElement).style.display = 'none';
+                                  }}
+                                />
+                              ) : (
+                                <ImageIcon className="w-5 h-5 text-slate-500" />
+                              )}
                             </div>
                             <div>
                               <span className="font-bold text-white block line-clamp-1">{product.name}</span>
@@ -1390,9 +1685,14 @@ export default function AdminDashboardPage() {
                             </div>
                           </div>
                         </td>
-                        <td className="p-3.5 font-medium text-slate-300">{product.category}</td>
-                        <td className="p-3.5 font-mono font-bold text-cyan-400">{formatPrice(product.price)}</td>
-                        <td className="p-3.5 font-mono text-slate-500 line-through">{formatPrice(product.originalPrice)}</td>
+                        <td className="p-3.5">
+                          <span className="font-bold text-cyan-400 block">{product.brand}</span>
+                          <span className="text-[10px] text-slate-400">{product.category}</span>
+                        </td>
+                        <td className="p-3.5">
+                          <span className="font-mono font-bold text-white block">{formatPrice(product.price)}</span>
+                          <span className="font-mono text-[10px] text-slate-500 line-through">{formatPrice(product.originalPrice)}</span>
+                        </td>
                         <td className="p-3.5">
                           <span
                             className={`font-mono font-bold text-[11px] px-2 py-0.5 rounded-full ${
@@ -1406,21 +1706,40 @@ export default function AdminDashboardPage() {
                             {product.stockCount} units
                           </span>
                         </td>
-                        <td className="p-3.5 text-slate-400 text-[11px] max-w-[150px] truncate">{product.warranty}</td>
+                        <td className="p-3.5">
+                          <div className="flex flex-wrap gap-1">
+                            {product.isFlashSale && (
+                              <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                                FLASH
+                              </span>
+                            )}
+                            {product.isFeatured && (
+                              <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                HOT
+                              </span>
+                            )}
+                            {product.isNew && (
+                              <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                                NEW
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td className="p-3.5 text-right">
                           <div className="flex items-center justify-end gap-2">
                             <button
                               onClick={() => openEditModal(product)}
-                              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-cyan-400 transition-colors"
-                              title={currentUser.role === 'MODERATOR' ? 'Update Stock Level' : 'Edit Product'}
+                              className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-cyan-400 transition-colors flex items-center gap-1.5 font-bold"
+                              title="Open WooCommerce Editor"
                             >
                               <Edit className="w-3.5 h-3.5" />
+                              <span>{currentUser.role === 'MODERATOR' ? 'Stock' : 'Edit'}</span>
                             </button>
 
                             {currentUser.role === 'SUPER_ADMIN' && (
                               <button
                                 onClick={() => setDeletingProductId(product.id)}
-                                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-rose-400 transition-colors"
+                                className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-rose-400 transition-colors"
                                 title="Delete product"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
@@ -1440,7 +1759,6 @@ export default function AdminDashboardPage() {
         {/* ─── TAB 3: ORDER MANAGEMENT ──────────────────────────────────────── */}
         {activeTab === 'orders' && (
           <div className="space-y-6">
-            {/* Filter Bar */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-2xl bg-slate-900/90 border border-slate-800">
               <div className="flex flex-1 items-center gap-3 w-full sm:w-auto">
                 <div className="relative flex-1 max-w-sm">
@@ -1704,7 +2022,6 @@ export default function AdminDashboardPage() {
               </button>
             </div>
 
-            {/* Staff Directory Table */}
             <div className="rounded-2xl border border-slate-800 bg-slate-900/60 overflow-hidden shadow-xl">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
@@ -1975,179 +2292,844 @@ export default function AdminDashboardPage() {
         </div>
       )}
 
-      {/* ─── MODAL: ADD / EDIT PRODUCT ──────────────────────────────────────── */}
-      {(isAddModalOpen || editingProduct) && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-          <div className="relative w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-3xl bg-slate-950 border border-cyan-500/40 p-6 sm:p-8 shadow-2xl">
-            <button
-              onClick={() => {
-                setIsAddModalOpen(false);
-                setEditingProduct(null);
-              }}
-              className="absolute top-5 right-5 p-2 rounded-xl bg-slate-900 text-slate-400 hover:text-white"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <h3 className="text-xl font-black text-white mb-1">
-              {editingProduct
-                ? currentUser.role === 'MODERATOR'
-                  ? 'Update Product Stock Level'
-                  : 'Edit Gadget Specifications'
-                : 'Deploy New Gadget to Catalog'}
-            </h3>
-            <p className="text-xs text-slate-400 mb-6">
-              {editingProduct
-                ? `SKU: ${editingProduct.sku} ${
-                    currentUser.role === 'MODERATOR'
-                      ? '• (Moderator: Stock count only)'
-                      : '• Bangladesh retail pricing & specs'
-                  }`
-                : 'Add authentic tech product with Bangladeshi pricing'}
-            </p>
-
-            <form onSubmit={handleSaveProduct} className="space-y-4 text-xs">
+      {/* ─── MODAL: WOOCOMMERCE-STYLE COMPREHENSIVE PRODUCT EDITOR ───────────── */}
+      {isEditorOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/85 backdrop-blur-md p-2 sm:p-4 md:p-6 flex items-start justify-center">
+          <div className="relative w-full max-w-6xl my-4 rounded-3xl bg-slate-950 border border-cyan-500/40 shadow-2xl overflow-hidden flex flex-col">
+            {/* Top Toolbar */}
+            <div className="p-5 sm:p-6 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between">
               <div>
-                <label className="block font-bold text-slate-300 mb-1">Product Title</label>
-                <input
-                  type="text"
-                  required
-                  disabled={currentUser.role === 'MODERATOR'}
-                  placeholder="e.g. Samsung Galaxy S25 Ultra (512GB)"
-                  value={formName}
-                  onChange={(e) => setFormName(e.target.value)}
-                  className={`w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white outline-none focus:border-cyan-400 ${
-                    currentUser.role === 'MODERATOR' ? 'opacity-60 cursor-not-allowed' : ''
-                  }`}
-                />
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-cyan-400 px-2 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/20">
+                    WooCommerce Suite
+                  </span>
+                  <span className="text-xs text-slate-400">
+                    {editingProduct ? `Editing ID: #${editingProduct.id}` : 'Catalog > New Deployment'}
+                  </span>
+                </div>
+                <h2 className="text-xl sm:text-2xl font-black text-white mt-1">
+                  {editingProduct
+                    ? currentUser?.role === 'MODERATOR'
+                      ? `Stock Management: ${editingProduct.name}`
+                      : `Edit Product: ${editingProduct.name}`
+                    : 'Deploy New Gadget to TechHunterBD Catalog'}
+                </h2>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-300 mb-1">Brand</label>
-                  <select
-                    disabled={currentUser.role === 'MODERATOR'}
-                    value={formBrand}
-                    onChange={(e) => setFormBrand(e.target.value)}
-                    className={`w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-white outline-none focus:border-cyan-400 ${
-                      currentUser.role === 'MODERATOR' ? 'opacity-60 cursor-not-allowed' : ''
-                    }`}
-                  >
-                    {brands.map((b) => (
-                      <option key={b.id} value={b.name}>{b.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-300 mb-1">Category</label>
-                  <select
-                    disabled={currentUser.role === 'MODERATOR'}
-                    value={formCategory}
-                    onChange={(e) => setFormCategory(e.target.value)}
-                    className={`w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-white outline-none focus:border-cyan-400 ${
-                      currentUser.role === 'MODERATOR' ? 'opacity-60 cursor-not-allowed' : ''
-                    }`}
-                  >
-                    {categories.map((c) => (
-                      <option key={c.id} value={c.name}>{c.name}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-300 mb-1">
-                    Selling Price (৳) {currentUser.role === 'MODERATOR' && '(Locked)'}
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    disabled={currentUser.role === 'MODERATOR'}
-                    value={formPrice}
-                    onChange={(e) => setFormPrice(Number(e.target.value))}
-                    className={`w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-cyan-400 font-mono font-bold outline-none focus:border-cyan-400 ${
-                      currentUser.role === 'MODERATOR' ? 'opacity-60 cursor-not-allowed' : ''
-                    }`}
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-300 mb-1">
-                    Regular MSRP (৳) {currentUser.role === 'MODERATOR' && '(Locked)'}
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    disabled={currentUser.role === 'MODERATOR'}
-                    value={formOriginalPrice}
-                    onChange={(e) => setFormOriginalPrice(Number(e.target.value))}
-                    className={`w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-400 font-mono outline-none focus:border-cyan-400 ${
-                      currentUser.role === 'MODERATOR' ? 'opacity-60 cursor-not-allowed' : ''
-                    }`}
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-300 mb-1 text-emerald-400">
-                    Stock Count ★
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    value={formStock}
-                    onChange={(e) => setFormStock(Number(e.target.value))}
-                    className="w-full bg-slate-900 border-2 border-emerald-500/50 rounded-xl px-3 py-2.5 text-white font-mono font-bold outline-none focus:border-emerald-400"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-300 mb-1">Warranty Term</label>
-                <input
-                  type="text"
-                  disabled={currentUser.role === 'MODERATOR'}
-                  value={formWarranty}
-                  onChange={(e) => setFormWarranty(e.target.value)}
-                  className={`w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white outline-none focus:border-cyan-400 ${
-                    currentUser.role === 'MODERATOR' ? 'opacity-60 cursor-not-allowed' : ''
-                  }`}
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-300 mb-1">Short Feature Highlights</label>
-                <textarea
-                  rows={2}
-                  disabled={currentUser.role === 'MODERATOR'}
-                  value={formShortDesc}
-                  onChange={(e) => setFormShortDesc(e.target.value)}
-                  placeholder="Key highlight specs"
-                  className={`w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white outline-none focus:border-cyan-400 ${
-                    currentUser.role === 'MODERATOR' ? 'opacity-60 cursor-not-allowed' : ''
-                  }`}
-                />
-              </div>
-
-              <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
+              <div className="flex items-center gap-3">
                 <button
                   type="button"
-                  onClick={() => {
-                    setIsAddModalOpen(false);
-                    setEditingProduct(null);
-                  }}
-                  className="px-4 py-2.5 rounded-xl bg-slate-900 text-slate-400 hover:text-white font-bold"
+                  onClick={() => setIsEditorOpen(false)}
+                  className="p-2 rounded-xl bg-slate-800 text-slate-400 hover:text-white transition-colors"
                 >
-                  Cancel
+                  <X className="w-5 h-5" />
                 </button>
-                <button
-                  type="submit"
-                  className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-black font-black shadow-lg hover:scale-105 transition-all"
-                >
-                  {editingProduct
-                    ? currentUser.role === 'MODERATOR'
-                      ? 'Confirm Stock Update'
-                      : 'Save Changes'
-                    : 'Confirm & Deploy'}
-                </button>
+              </div>
+            </div>
+
+            {/* Form Canvas (2-Column WooCommerce Layout) */}
+            <form onSubmit={handleSaveProduct} className="p-6 grid grid-cols-1 lg:grid-cols-12 gap-8">
+              {/* ─── LEFT COLUMN: MAIN CONTENT & WOOCOMMERCE DATA BOX (8 cols) ─── */}
+              <div className="lg:col-span-8 space-y-6">
+                {/* 1. Title & Permalink */}
+                <div className="p-5 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1">
+                      Product Title <span className="text-cyan-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      disabled={currentUser?.role === 'MODERATOR'}
+                      placeholder="e.g. Samsung Galaxy S25 Ultra 5G (12GB/512GB)"
+                      value={formName}
+                      onChange={(e) => handleNameChange(e.target.value)}
+                      className={`w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white font-bold placeholder-slate-500 outline-none focus:border-cyan-400 ${
+                        currentUser?.role === 'MODERATOR' ? 'opacity-60 cursor-not-allowed' : ''
+                      }`}
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2 text-[11px] font-mono text-slate-400 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/80">
+                    <LinkIcon className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />
+                    <span className="text-slate-500">Permalink:</span>
+                    <span className="text-slate-400">techhunterbd.com/product/</span>
+                    <input
+                      type="text"
+                      disabled={currentUser?.role === 'MODERATOR'}
+                      value={formSlug}
+                      onChange={(e) => setFormSlug(e.target.value)}
+                      className="bg-transparent text-cyan-300 font-bold outline-none flex-1"
+                      placeholder="auto-generated-slug"
+                    />
+                  </div>
+                </div>
+
+                {/* 2. Detailed Description & Short Highlights */}
+                <div className="p-5 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-4">
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                        <FileText className="w-3.5 h-3.5 text-cyan-400" />
+                        Full Product Description (WooCommerce Rich Content)
+                      </label>
+                      <span className="text-[10px] font-mono text-slate-500">Markdown & HTML Supported</span>
+                    </div>
+                    <textarea
+                      rows={5}
+                      disabled={currentUser?.role === 'MODERATOR'}
+                      value={formDescription}
+                      onChange={(e) => setFormDescription(e.target.value)}
+                      placeholder="Comprehensive overview of hardware, ergonomics, audio performance, benchmark scores..."
+                      className={`w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-500 outline-none focus:border-cyan-400 ${
+                        currentUser?.role === 'MODERATOR' ? 'opacity-60 cursor-not-allowed' : ''
+                      }`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                      Product Short Description (Quick Highlights / Bullet Teaser)
+                    </label>
+                    <textarea
+                      rows={2}
+                      disabled={currentUser?.role === 'MODERATOR'}
+                      value={formShortDesc}
+                      onChange={(e) => setFormShortDesc(e.target.value)}
+                      placeholder="Key highlights (e.g. Snapdragon 8 Elite, 200MP Quad Camera, Titanium Armor, 5000mAh)"
+                      className={`w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-500 outline-none focus:border-cyan-400 ${
+                        currentUser?.role === 'MODERATOR' ? 'opacity-60 cursor-not-allowed' : ''
+                      }`}
+                    />
+                  </div>
+                </div>
+
+                {/* 3. WOOCOMMERCE PRODUCT DATA BOX (Multi-Tab) */}
+                <div className="rounded-2xl bg-slate-900/90 border border-slate-800 overflow-hidden shadow-xl">
+                  {/* Meta Box Header */}
+                  <div className="p-4 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
+                    <span className="text-xs font-bold text-white flex items-center gap-2">
+                      <Box className="w-4 h-4 text-cyan-400" />
+                      Product Data — Simple & Variable Gadget Suite
+                    </span>
+                    <span className="text-[10px] font-mono text-slate-400">WooCommerce Standard</span>
+                  </div>
+
+                  {/* Tabs Nav */}
+                  <div className="flex border-b border-slate-800 overflow-x-auto bg-slate-950/60">
+                    <button
+                      type="button"
+                      onClick={() => setWooActiveTab('general')}
+                      className={`px-4 py-2.5 text-xs font-bold whitespace-nowrap transition-colors flex items-center gap-2 border-b-2 ${
+                        wooActiveTab === 'general'
+                          ? 'border-cyan-400 text-cyan-400 bg-slate-900'
+                          : 'border-transparent text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <DollarSign className="w-3.5 h-3.5" />
+                      General & Pricing
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setWooActiveTab('inventory')}
+                      className={`px-4 py-2.5 text-xs font-bold whitespace-nowrap transition-colors flex items-center gap-2 border-b-2 ${
+                        wooActiveTab === 'inventory'
+                          ? 'border-cyan-400 text-cyan-400 bg-slate-900'
+                          : 'border-transparent text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <Package className="w-3.5 h-3.5" />
+                      Inventory & Stock
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setWooActiveTab('specs')}
+                      className={`px-4 py-2.5 text-xs font-bold whitespace-nowrap transition-colors flex items-center gap-2 border-b-2 ${
+                        wooActiveTab === 'specs'
+                          ? 'border-cyan-400 text-cyan-400 bg-slate-900'
+                          : 'border-transparent text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <SlidersHorizontal className="w-3.5 h-3.5" />
+                      Specifications ({specRows.length})
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setWooActiveTab('variants')}
+                      className={`px-4 py-2.5 text-xs font-bold whitespace-nowrap transition-colors flex items-center gap-2 border-b-2 ${
+                        wooActiveTab === 'variants'
+                          ? 'border-cyan-400 text-cyan-400 bg-slate-900'
+                          : 'border-transparent text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <Palette className="w-3.5 h-3.5" />
+                      Variants ({variantsList.length})
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setWooActiveTab('shipping')}
+                      className={`px-4 py-2.5 text-xs font-bold whitespace-nowrap transition-colors flex items-center gap-2 border-b-2 ${
+                        wooActiveTab === 'shipping'
+                          ? 'border-cyan-400 text-cyan-400 bg-slate-900'
+                          : 'border-transparent text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <Truck className="w-3.5 h-3.5" />
+                      Shipping & Warranty
+                    </button>
+                  </div>
+
+                  {/* Tab Panes */}
+                  <div className="p-6">
+                    {/* PANE 1: GENERAL & PRICING */}
+                    {wooActiveTab === 'general' && (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs font-bold text-slate-300 mb-1">
+                              Selling Price (BDT ৳) <span className="text-cyan-400">*</span>
+                            </label>
+                            <input
+                              type="number"
+                              required
+                              disabled={currentUser?.role === 'MODERATOR'}
+                              value={formPrice}
+                              onChange={(e) => setFormPrice(Number(e.target.value))}
+                              className={`w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-cyan-400 font-mono font-black text-sm outline-none focus:border-cyan-400 ${
+                                currentUser?.role === 'MODERATOR' ? 'opacity-60 cursor-not-allowed' : ''
+                              }`}
+                            />
+                            <span className="text-[10px] text-slate-500 mt-1 block">Active checkout price</span>
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-bold text-slate-300 mb-1">
+                              Regular MSRP Price (BDT ৳)
+                            </label>
+                            <input
+                              type="number"
+                              required
+                              disabled={currentUser?.role === 'MODERATOR'}
+                              value={formOriginalPrice}
+                              onChange={(e) => setFormOriginalPrice(Number(e.target.value))}
+                              className={`w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-400 font-mono text-sm outline-none focus:border-cyan-400 ${
+                                currentUser?.role === 'MODERATOR' ? 'opacity-60 cursor-not-allowed' : ''
+                              }`}
+                            />
+                            <span className="text-[10px] text-slate-500 mt-1 block">Shown crossed out for discount badge</span>
+                          </div>
+                        </div>
+
+                        {/* Discount Banner Preview */}
+                        <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-between">
+                          <span className="text-xs text-cyan-300 font-medium">
+                            Auto Calculated Discount:
+                          </span>
+                          <span className="font-mono font-black text-xs px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+                            {Math.max(0, Math.round(((formOriginalPrice - formPrice) / formOriginalPrice) * 100))}% OFF (You Save {formatPrice(Math.max(0, formOriginalPrice - formPrice))})
+                          </span>
+                        </div>
+
+                        {/* Flash Sale Switch */}
+                        <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between">
+                          <div>
+                            <span className="text-xs font-bold text-white block">Participate in Midnight Flash Sale</span>
+                            <span className="text-[11px] text-slate-400">Activates countdown ticker and fiery stock meters</span>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={currentUser?.role === 'MODERATOR'}
+                            onClick={() => setFormIsFlashSale(!formIsFlashSale)}
+                            className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
+                              formIsFlashSale
+                                ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/20'
+                                : 'bg-slate-800 text-slate-400'
+                            }`}
+                          >
+                            {formIsFlashSale ? 'ACTIVE IN FLASH' : 'DISABLED'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* PANE 2: INVENTORY & STOCK */}
+                    {wooActiveTab === 'inventory' && (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs font-bold text-slate-300 mb-1">
+                              Stock Keeping Unit (SKU)
+                            </label>
+                            <input
+                              type="text"
+                              disabled={currentUser?.role === 'MODERATOR'}
+                              value={formSku}
+                              onChange={(e) => setFormSku(e.target.value)}
+                              className={`w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs font-mono text-white outline-none focus:border-cyan-400 ${
+                                currentUser?.role === 'MODERATOR' ? 'opacity-60 cursor-not-allowed' : ''
+                              }`}
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-bold text-slate-300 mb-1">
+                              Stock Status
+                            </label>
+                            <select
+                              value={formStockStatus}
+                              onChange={(e) => setFormStockStatus(e.target.value as any)}
+                              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none focus:border-cyan-400"
+                            >
+                              <option value="inStock">In Stock (Instant Dispatch)</option>
+                              <option value="outOfStock">Out of Stock</option>
+                              <option value="preorder">Pre-Order (7-10 Days)</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-emerald-400 mb-1">
+                            Stock Quantity Count ★
+                          </label>
+                          <input
+                            type="number"
+                            required
+                            value={formStock}
+                            onChange={(e) => setFormStock(Number(e.target.value))}
+                            className="w-full sm:w-60 bg-slate-950 border-2 border-emerald-500/50 rounded-xl px-4 py-2.5 text-white font-mono font-bold outline-none focus:border-emerald-400"
+                          />
+                          <span className="text-[10px] text-slate-500 mt-1 block">
+                            When stock reaches 0, status automatically marks as Sold Out.
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* PANE 3: SPECIFICATIONS BUILDER */}
+                    {wooActiveTab === 'specs' && (
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-white">Technical Specifications Matrix</span>
+                          {currentUser?.role !== 'MODERATOR' && (
+                            <button
+                              type="button"
+                              onClick={handleAddSpecRow}
+                              className="text-xs font-bold text-cyan-400 hover:text-cyan-300 flex items-center gap-1"
+                            >
+                              <Plus className="w-3.5 h-3.5" /> + Add Specification Row
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="space-y-2">
+                          {specRows.map((spec) => (
+                            <div key={spec.id} className="flex items-center gap-2">
+                              <input
+                                type="text"
+                                placeholder="Attribute (e.g. Display)"
+                                disabled={currentUser?.role === 'MODERATOR'}
+                                value={spec.key}
+                                onChange={(e) => handleUpdateSpecRow(spec.id, 'key', e.target.value)}
+                                className="w-1/3 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-cyan-300 font-bold outline-none focus:border-cyan-400"
+                              />
+                              <input
+                                type="text"
+                                placeholder="Value (e.g. 6.9-inch Dynamic AMOLED 120Hz)"
+                                disabled={currentUser?.role === 'MODERATOR'}
+                                value={spec.value}
+                                onChange={(e) => handleUpdateSpecRow(spec.id, 'value', e.target.value)}
+                                className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-cyan-400"
+                              />
+                              {currentUser?.role !== 'MODERATOR' && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveSpecRow(spec.id)}
+                                  className="p-2 rounded-xl bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition-colors"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* PANE 4: VARIANTS BUILDER */}
+                    {wooActiveTab === 'variants' && (
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <span className="text-xs font-bold text-white block">Product Variants & Attributes</span>
+                            <span className="text-[10px] text-slate-400">Manage multiple colors, storages, or bundle tiers</span>
+                          </div>
+                          {currentUser?.role !== 'MODERATOR' && (
+                            <button
+                              type="button"
+                              onClick={handleAddVariant}
+                              className="text-xs font-bold text-cyan-400 hover:text-cyan-300 flex items-center gap-1"
+                            >
+                              <Plus className="w-3.5 h-3.5" /> + Add Variant Tier
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="space-y-3">
+                          {variantsList.map((variant) => (
+                            <div key={variant.id} className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span className="font-bold text-xs text-white">{variant.name}</span>
+                                {currentUser?.role !== 'MODERATOR' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveVariant(variant.id)}
+                                    className="text-rose-400 hover:text-rose-300 text-xs"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+                                <input
+                                  type="text"
+                                  placeholder="Option Title"
+                                  disabled={currentUser?.role === 'MODERATOR'}
+                                  value={variant.name}
+                                  onChange={(e) => handleUpdateVariant(variant.id, 'name', e.target.value)}
+                                  className="bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white"
+                                />
+                                <select
+                                  disabled={currentUser?.role === 'MODERATOR'}
+                                  value={variant.type}
+                                  onChange={(e) => handleUpdateVariant(variant.id, 'type', e.target.value as any)}
+                                  className="bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-300"
+                                >
+                                  <option value="color">Color</option>
+                                  <option value="storage">Storage</option>
+                                  <option value="ram">RAM</option>
+                                  <option value="size">Size</option>
+                                </select>
+                                <input
+                                  type="text"
+                                  placeholder="Value (e.g. 512GB)"
+                                  disabled={currentUser?.role === 'MODERATOR'}
+                                  value={variant.value}
+                                  onChange={(e) => handleUpdateVariant(variant.id, 'value', e.target.value)}
+                                  className="bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white"
+                                />
+                                <div className="flex items-center gap-1">
+                                  <span className="text-[10px] text-slate-400 font-mono">+৳</span>
+                                  <input
+                                    type="number"
+                                    placeholder="Offset ৳"
+                                    disabled={currentUser?.role === 'MODERATOR'}
+                                    value={variant.priceModifier}
+                                    onChange={(e) => handleUpdateVariant(variant.id, 'priceModifier', Number(e.target.value))}
+                                    className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-cyan-400 font-mono"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* PANE 5: SHIPPING & WARRANTY */}
+                    {wooActiveTab === 'shipping' && (
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-300 mb-1">
+                            Official Warranty Term
+                          </label>
+                          <input
+                            type="text"
+                            disabled={currentUser?.role === 'MODERATOR'}
+                            value={formWarranty}
+                            onChange={(e) => setFormWarranty(e.target.value)}
+                            className={`w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none focus:border-cyan-400 ${
+                              currentUser?.role === 'MODERATOR' ? 'opacity-60 cursor-not-allowed' : ''
+                            }`}
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-300 mb-1">
+                            Delivery Estimation & Dispatch Guarantee
+                          </label>
+                          <input
+                            type="text"
+                            disabled={currentUser?.role === 'MODERATOR'}
+                            value={formDeliveryEst}
+                            onChange={(e) => setFormDeliveryEst(e.target.value)}
+                            className={`w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none focus:border-cyan-400 ${
+                              currentUser?.role === 'MODERATOR' ? 'opacity-60 cursor-not-allowed' : ''
+                            }`}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 4. PRODUCT GALLERY TRAY (Additional Media) */}
+                <div className="p-5 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <ImageIcon className="w-3.5 h-3.5 text-cyan-400" />
+                        Product Gallery Images ({galleryImages.length} additional)
+                      </h4>
+                      <span className="text-[10px] text-slate-400">Shown in customer lightbox and multi-angle viewer</span>
+                    </div>
+
+                    {/* Quick preset gadget images */}
+                    <div className="hidden sm:flex items-center gap-1">
+                      <span className="text-[9px] font-mono text-slate-500 uppercase mr-1">Presets:</span>
+                      {IMAGE_PRESETS.slice(0, 3).map((p) => (
+                        <button
+                          key={p.label}
+                          type="button"
+                          onClick={() => setGalleryImages((prev) => [...prev, p.url])}
+                          className="text-[9px] font-bold px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+                        >
+                          +{p.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-3">
+                    {galleryImages.map((imgUrl, idx) => (
+                      <div
+                        key={idx}
+                        className="group relative aspect-square rounded-xl bg-slate-950 border border-slate-800 overflow-hidden flex items-center justify-center"
+                      >
+                        <img src={imgUrl} alt="Gallery" className="w-full h-full object-cover" />
+                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleSetMainImage(imgUrl)}
+                            title="Promote to Main Featured Image"
+                            className="p-1 rounded-lg bg-cyan-500 text-black hover:scale-110 transition-transform"
+                          >
+                            <Sparkles className="w-3 h-3" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveGalleryImage(idx)}
+                            title="Remove image"
+                            className="p-1 rounded-lg bg-rose-600 text-white hover:scale-110 transition-transform"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* Add Image URL or Drop Tile */}
+                    <div className="aspect-square rounded-xl border border-dashed border-slate-800 hover:border-cyan-400 flex flex-col items-center justify-center p-2 text-center transition-colors">
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="text-[10px] font-bold text-cyan-400 hover:underline"
+                      >
+                        + Add Image
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* ─── RIGHT SIDEBAR: PUBLISH, CATEGORIES, BRANDS, FEATURED MEDIA ─── */}
+              <div className="lg:col-span-4 space-y-6">
+                {/* 1. PUBLISH BOX */}
+                <div className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-xl space-y-4">
+                  <div className="pb-3 border-b border-slate-800 flex items-center justify-between">
+                    <span className="text-xs font-black uppercase text-white tracking-wider">Publish</span>
+                    <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                      Visibility: Public
+                    </span>
+                  </div>
+
+                  <div className="space-y-2 text-xs text-slate-400">
+                    <div className="flex justify-between">
+                      <span>Status:</span>
+                      <span className="font-bold text-white">
+                        {editingProduct ? 'Published' : 'Ready to Deploy'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Catalog Visibility:</span>
+                      <span className="font-bold text-white">Shop and Search Results</span>
+                    </div>
+                  </div>
+
+                  <div className="pt-3 border-t border-slate-800 flex flex-col gap-2">
+                    <button
+                      type="submit"
+                      className="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-black text-xs shadow-lg shadow-cyan-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                    >
+                      <Save className="w-4 h-4" />
+                      {editingProduct
+                        ? currentUser?.role === 'MODERATOR'
+                          ? 'Confirm Stock Update'
+                          : 'Save & Publish Changes'
+                        : 'Deploy Gadget to Storefront'}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsEditorOpen(false)}
+                      className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-850 text-slate-400 hover:text-white font-bold text-xs transition-colors"
+                    >
+                      Cancel / Close
+                    </button>
+                  </div>
+                </div>
+
+                {/* 2. MAIN FEATURED PRODUCT IMAGE */}
+                <div className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-xl space-y-3">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                    <span className="text-xs font-black uppercase text-white tracking-wider">Featured Image</span>
+                    <span className="text-[10px] font-mono text-cyan-400">Main Thumbnail</span>
+                  </div>
+
+                  {/* Image Preview Box */}
+                  <div className="relative aspect-video rounded-xl bg-slate-950 border border-slate-800 overflow-hidden flex items-center justify-center">
+                    {featuredImage ? (
+                      <img src={featuredImage} alt="Featured" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="text-center p-4">
+                        <ImageIcon className="w-8 h-8 text-slate-600 mx-auto mb-1" />
+                        <span className="text-[11px] text-slate-500">No image assigned</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Drag & Drop File Upload or Computer File Select */}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
+
+                  <div
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setIsDraggingImage(true);
+                    }}
+                    onDragLeave={() => setIsDraggingImage(false)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setIsDraggingImage(false);
+                      const files = e.dataTransfer.files;
+                      if (files && files.length > 0) {
+                        const reader = new FileReader();
+                        reader.onload = (ev) => {
+                          if (ev.target?.result) {
+                            setFeaturedImage(ev.target.result as string);
+                            showToast('Dropped image set as Featured');
+                          }
+                        };
+                        reader.readAsDataURL(files[0]);
+                      }
+                    }}
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`p-4 rounded-xl border border-dashed cursor-pointer text-center transition-all ${
+                      isDraggingImage
+                        ? 'border-cyan-400 bg-cyan-500/10'
+                        : 'border-slate-800 hover:border-slate-700 bg-slate-950'
+                    }`}
+                  >
+                    <UploadCloud className="w-5 h-5 text-cyan-400 mx-auto mb-1" />
+                    <span className="text-xs font-bold text-slate-300 block">Click to Upload Local File</span>
+                    <span className="text-[10px] text-slate-500 block">or drag & drop gadget photo</span>
+                  </div>
+
+                  {/* Direct Image URL input */}
+                  <div className="pt-2 flex items-center gap-2">
+                    <input
+                      type="url"
+                      placeholder="Paste Image URL (https://...)"
+                      value={imageUrlInput}
+                      onChange={(e) => setImageUrlInput(e.target.value)}
+                      className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 outline-none focus:border-cyan-400"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddImageUrl}
+                      className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-400 font-bold text-xs"
+                    >
+                      Set
+                    </button>
+                  </div>
+                </div>
+
+                {/* 3. DYNAMIC PRODUCT CATEGORIES */}
+                <div className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-xl space-y-3">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                    <span className="text-xs font-black uppercase text-white tracking-wider">Product Category</span>
+                    <span className="text-[10px] font-mono text-slate-400">{categoryList.length} total</span>
+                  </div>
+
+                  <select
+                    disabled={currentUser?.role === 'MODERATOR'}
+                    value={formCategory}
+                    onChange={(e) => setFormCategory(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white font-bold outline-none focus:border-cyan-400"
+                  >
+                    {categoryList.map((cat) => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+
+                  {/* Inline + Add New Category */}
+                  {currentUser?.role !== 'MODERATOR' && (
+                    <div className="pt-2 border-t border-slate-800/80">
+                      {!showAddCatInput ? (
+                        <button
+                          type="button"
+                          onClick={() => setShowAddCatInput(true)}
+                          className="text-xs font-bold text-cyan-400 hover:underline flex items-center gap-1"
+                        >
+                          <FolderPlus className="w-3.5 h-3.5" /> + Add New Category
+                        </button>
+                      ) : (
+                        <div className="space-y-2 pt-1">
+                          <input
+                            type="text"
+                            placeholder="New Category (e.g. Drone, Audio)"
+                            value={newCatInput}
+                            onChange={(e) => setNewCatInput(e.target.value)}
+                            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-cyan-400"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={handleAddNewCategory}
+                              className="px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-black font-bold text-xs"
+                            >
+                              Add Category
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowAddCatInput(false);
+                                setNewCatInput('');
+                              }}
+                              className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white text-xs font-bold"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* 4. DYNAMIC BRANDS */}
+                <div className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-xl space-y-3">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                    <span className="text-xs font-black uppercase text-white tracking-wider">Manufacturer / Brand</span>
+                    <span className="text-[10px] font-mono text-slate-400">{brandList.length} total</span>
+                  </div>
+
+                  <select
+                    disabled={currentUser?.role === 'MODERATOR'}
+                    value={formBrand}
+                    onChange={(e) => setFormBrand(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white font-bold outline-none focus:border-cyan-400"
+                  >
+                    {brandList.map((brand) => (
+                      <option key={brand} value={brand}>{brand}</option>
+                    ))}
+                  </select>
+
+                  {/* Inline + Add New Brand */}
+                  {currentUser?.role !== 'MODERATOR' && (
+                    <div className="pt-2 border-t border-slate-800/80">
+                      {!showAddBrandInput ? (
+                        <button
+                          type="button"
+                          onClick={() => setShowAddBrandInput(true)}
+                          className="text-xs font-bold text-cyan-400 hover:underline flex items-center gap-1"
+                        >
+                          <Plus className="w-3.5 h-3.5" /> + Add New Brand
+                        </button>
+                      ) : (
+                        <div className="space-y-2 pt-1">
+                          <input
+                            type="text"
+                            placeholder="New Brand (e.g. Nothing, DJI, Bose)"
+                            value={newBrandInput}
+                            onChange={(e) => setNewBrandInput(e.target.value)}
+                            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-cyan-400"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={handleAddNewBrand}
+                              className="px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-black font-bold text-xs"
+                            >
+                              Add Brand
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowAddBrandInput(false);
+                                setNewBrandInput('');
+                              }}
+                              className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white text-xs font-bold"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* 5. STOREFRONT BADGES & TAGS */}
+                <div className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-xl space-y-3">
+                  <div className="pb-2 border-b border-slate-800">
+                    <span className="text-xs font-black uppercase text-white tracking-wider">Product Badges</span>
+                  </div>
+
+                  <div className="space-y-2.5">
+                    <label className="flex items-center justify-between text-xs cursor-pointer">
+                      <span className="text-slate-300">Hot Flagship Drop (isFeatured)</span>
+                      <input
+                        type="checkbox"
+                        disabled={currentUser?.role === 'MODERATOR'}
+                        checked={formIsFeatured}
+                        onChange={(e) => setFormIsFeatured(e.target.checked)}
+                        className="rounded bg-slate-950 border-slate-800 text-cyan-400 focus:ring-0 cursor-pointer"
+                      />
+                    </label>
+
+                    <label className="flex items-center justify-between text-xs cursor-pointer">
+                      <span className="text-slate-300">Brand New Arrival (isNew)</span>
+                      <input
+                        type="checkbox"
+                        disabled={currentUser?.role === 'MODERATOR'}
+                        checked={formIsNew}
+                        onChange={(e) => setFormIsNew(e.target.checked)}
+                        className="rounded bg-slate-950 border-slate-800 text-cyan-400 focus:ring-0 cursor-pointer"
+                      />
+                    </label>
+                  </div>
+                </div>
               </div>
             </form>
           </div>

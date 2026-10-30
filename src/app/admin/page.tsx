@@ -485,7 +485,8 @@ export default function AdminDashboardPage() {
   const [galleryImages, setGalleryImages] = useState<string[]>([]);
   const [imageUrlInput, setImageUrlInput] = useState('');
   const [isDraggingImage, setIsDraggingImage] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const featuredFileInputRef = useRef<HTMLInputElement>(null);
+  const galleryFileInputRef = useRef<HTMLInputElement>(null);
 
   // Specs & Variants
   const [specRows, setSpecRows] = useState<SpecRow[]>([]);
@@ -630,8 +631,41 @@ export default function AdminDashboardPage() {
     setIsEditorOpen(true);
   };
 
-  // Image Upload Handlers
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // ─── Image Upload & Featured Image Handlers ──────────────────────────────
+  const handleFeaturedFileSelect = (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      showToast('Please select a valid image file (PNG, JPG, WebP, etc.)');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = event.target?.result as string;
+      if (result) {
+        setFeaturedImage(result);
+        showToast(`Featured image updated: "${file.name}"`);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSetFeaturedImageUrl = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const url = imageUrlInput.trim();
+    if (!url) {
+      showToast('Please enter an image URL');
+      return;
+    }
+    setFeaturedImage(url);
+    setImageUrlInput('');
+    showToast('Featured thumbnail updated from URL');
+  };
+
+  const handleRemoveFeaturedImage = () => {
+    setFeaturedImage('');
+    showToast('Featured thumbnail removed');
+  };
+
+  const handleGalleryFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
@@ -640,28 +674,13 @@ export default function AdminDashboardPage() {
       reader.onload = (event) => {
         const result = event.target?.result as string;
         if (result) {
-          if (!featuredImage || featuredImage === '/products/placeholder.jpg') {
-            setFeaturedImage(result);
-          } else {
-            setGalleryImages((prev) => [result, ...prev]);
-          }
-          showToast(`Loaded "${file.name}"`);
+          setGalleryImages((prev) => [...prev, result]);
+          showToast(`Gallery media added: "${file.name}"`);
         }
       };
       reader.readAsDataURL(file);
     });
-  };
-
-  const handleAddImageUrl = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!imageUrlInput.trim()) return;
-    if (!featuredImage || featuredImage === '/products/placeholder.jpg') {
-      setFeaturedImage(imageUrlInput.trim());
-    } else {
-      setGalleryImages((prev) => [...prev, imageUrlInput.trim()]);
-    }
-    setImageUrlInput('');
-    showToast('Image URL appended to media collection');
+    e.target.value = '';
   };
 
   const handleSetMainImage = (url: string) => {
@@ -726,8 +745,12 @@ export default function AdminDashboardPage() {
       }
     });
 
-    // Assemble all images
-    const allImages = [featuredImage, ...galleryImages].filter(Boolean);
+    // Assemble all images: ensure the updated featured image is first
+    const cleanFeatured = featuredImage.trim() || '/products/placeholder.jpg';
+    const cleanGallery = galleryImages
+      .map((img) => img.trim())
+      .filter((img) => Boolean(img) && img !== cleanFeatured);
+    const allImages = [cleanFeatured, ...cleanGallery];
 
     const isMod = currentUser?.role === 'MODERATOR';
 
@@ -2834,12 +2857,20 @@ export default function AdminDashboardPage() {
 
                     {/* Add Image URL or Drop Tile */}
                     <div className="aspect-square rounded-xl border border-dashed border-slate-800 hover:border-cyan-400 flex flex-col items-center justify-center p-2 text-center transition-colors">
+                      <input
+                        ref={galleryFileInputRef}
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        onChange={handleGalleryFileUpload}
+                        className="hidden"
+                      />
                       <button
                         type="button"
-                        onClick={() => fileInputRef.current?.click()}
+                        onClick={() => galleryFileInputRef.current?.click()}
                         className="text-[10px] font-bold text-cyan-400 hover:underline"
                       >
-                        + Add Image
+                        + Add Gallery Image
                       </button>
                     </div>
                   </div>
@@ -2900,28 +2931,52 @@ export default function AdminDashboardPage() {
                     <span className="text-[10px] font-mono text-cyan-400">Main Thumbnail</span>
                   </div>
 
-                  {/* Image Preview Box */}
-                  <div className="relative aspect-video rounded-xl bg-slate-950 border border-slate-800 overflow-hidden flex items-center justify-center">
+                  {/* Image Preview Box with Remove button */}
+                  <div className="relative aspect-video rounded-xl bg-slate-950 border border-slate-800 overflow-hidden flex items-center justify-center group">
                     {featuredImage ? (
-                      <img src={featuredImage} alt="Featured" className="w-full h-full object-cover" />
+                      <>
+                        <img
+                          src={featuredImage}
+                          alt="Featured"
+                          className="w-full h-full object-cover"
+                          onError={() => {
+                            showToast('Image preview failed: check URL or upload a file');
+                          }}
+                        />
+                        {/* Remove Image Button */}
+                        <button
+                          type="button"
+                          onClick={handleRemoveFeaturedImage}
+                          className="absolute top-2 right-2 px-2.5 py-1 rounded-lg bg-slate-950/85 hover:bg-rose-600 text-rose-300 hover:text-white transition-all shadow-lg border border-rose-500/30 flex items-center gap-1.5 text-[10px] font-bold backdrop-blur-md"
+                          title="Remove featured image"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Remove Image</span>
+                        </button>
+                      </>
                     ) : (
                       <div className="text-center p-4">
                         <ImageIcon className="w-8 h-8 text-slate-600 mx-auto mb-1" />
-                        <span className="text-[11px] text-slate-500">No image assigned</span>
+                        <span className="text-[11px] text-slate-400 font-medium block">No featured image assigned</span>
+                        <span className="text-[10px] text-cyan-400 block mt-0.5">Upload a photo or paste a URL below</span>
                       </div>
                     )}
                   </div>
 
-                  {/* Drag & Drop File Upload or Computer File Select */}
+                  {/* Hidden file input for Featured Image */}
                   <input
-                    ref={fileInputRef}
+                    ref={featuredFileInputRef}
                     type="file"
                     accept="image/*"
-                    multiple
-                    onChange={handleFileUpload}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleFeaturedFileSelect(file);
+                      e.target.value = '';
+                    }}
                     className="hidden"
                   />
 
+                  {/* Drag & Drop or Click to Select File */}
                   <div
                     onDragOver={(e) => {
                       e.preventDefault();
@@ -2931,19 +2986,12 @@ export default function AdminDashboardPage() {
                     onDrop={(e) => {
                       e.preventDefault();
                       setIsDraggingImage(false);
-                      const files = e.dataTransfer.files;
-                      if (files && files.length > 0) {
-                        const reader = new FileReader();
-                        reader.onload = (ev) => {
-                          if (ev.target?.result) {
-                            setFeaturedImage(ev.target.result as string);
-                            showToast('Dropped image set as Featured');
-                          }
-                        };
-                        reader.readAsDataURL(files[0]);
+                      const file = e.dataTransfer.files?.[0];
+                      if (file) {
+                        handleFeaturedFileSelect(file);
                       }
                     }}
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={() => featuredFileInputRef.current?.click()}
                     className={`p-4 rounded-xl border border-dashed cursor-pointer text-center transition-all ${
                       isDraggingImage
                         ? 'border-cyan-400 bg-cyan-500/10'
@@ -2956,21 +3004,49 @@ export default function AdminDashboardPage() {
                   </div>
 
                   {/* Direct Image URL input */}
-                  <div className="pt-2 flex items-center gap-2">
+                  <div className="pt-1 flex items-center gap-2">
                     <input
                       type="url"
                       placeholder="Paste Image URL (https://...)"
                       value={imageUrlInput}
                       onChange={(e) => setImageUrlInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleSetFeaturedImageUrl();
+                        }
+                      }}
                       className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 outline-none focus:border-cyan-400"
                     />
                     <button
                       type="button"
-                      onClick={handleAddImageUrl}
-                      className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-400 font-bold text-xs"
+                      onClick={handleSetFeaturedImageUrl}
+                      className="px-3.5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-black text-xs transition-colors shadow-md"
                     >
                       Set
                     </button>
+                  </div>
+
+                  {/* Quick Preset Buttons */}
+                  <div className="pt-2 border-t border-slate-800/80">
+                    <span className="text-[9px] font-mono text-slate-400 uppercase font-bold block mb-1.5">
+                      Fast Demo Presets:
+                    </span>
+                    <div className="flex flex-wrap gap-1">
+                      {IMAGE_PRESETS.map((p) => (
+                        <button
+                          key={p.label}
+                          type="button"
+                          onClick={() => {
+                            setFeaturedImage(p.url);
+                            showToast(`Featured image set to ${p.label}`);
+                          }}
+                          className="text-[9px] font-bold px-2 py-1 rounded-lg bg-slate-850 hover:bg-slate-750 text-slate-300 hover:text-cyan-400 border border-slate-800 transition-colors"
+                        >
+                          {p.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
 

@@ -500,6 +500,7 @@ export default function AdminDashboardPage() {
       }
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('storage'));
+        window.dispatchEvent(new CustomEvent('products_updated', { detail: updatedProducts }));
         window.dispatchEvent(new Event('storage_update'));
         window.dispatchEvent(new StorageEvent('storage', { key: STORAGE_PRODUCTS_KEY }));
       }

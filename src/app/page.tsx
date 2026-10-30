@@ -139,17 +139,24 @@ export default function HomePage() {
 
     loadFromStorage();
 
-      const handleStorageChange = () => {
+    const handleProductsUpdated = (e: Event) => {
+      const customEvt = e as CustomEvent;
+      if (customEvt.detail && Array.isArray(customEvt.detail)) {
+        setAllProducts(customEvt.detail);
+      } else {
         loadFromStorage();
-      };
+      }
+    };
 
-      window.addEventListener('storage', handleStorageChange);
-      window.addEventListener('storage_update', handleStorageChange);
-      return () => {
-        window.removeEventListener('storage', handleStorageChange);
-        window.removeEventListener('storage_update', handleStorageChange);
-      };
-    }, []);
+    window.addEventListener('storage', loadFromStorage);
+    window.addEventListener('storage_update', loadFromStorage);
+    window.addEventListener('products_updated', handleProductsUpdated);
+    return () => {
+      window.removeEventListener('storage', loadFromStorage);
+      window.removeEventListener('storage_update', loadFromStorage);
+      window.removeEventListener('products_updated', handleProductsUpdated);
+    };
+  }, []);
 
   const dynamicCategories = useMemo(() => {
     return allCategories.map((cat) => ({
@@ -714,7 +721,7 @@ export default function HomePage() {
                   <div className="flex items-center gap-3">
                     <button
                       onClick={() => {
-                        const targetProd = products.find((p) => p.id === heroSlides[currentSlide].productId);
+                        const targetProd = allProducts.find((p) => p.id === heroSlides[currentSlide].productId);
                         if (targetProd) addToCart(targetProd);
                       }}
                       className="px-6 py-3.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-black font-extrabold text-sm shadow-xl shadow-cyan-500/20 hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
@@ -724,7 +731,7 @@ export default function HomePage() {
                     </button>
                     <button
                       onClick={() => {
-                        const targetProd = products.find((p) => p.id === heroSlides[currentSlide].productId);
+                        const targetProd = allProducts.find((p) => p.id === heroSlides[currentSlide].productId);
                         if (targetProd) setQuickViewProduct(targetProd);
                       }}
                       className="px-5 py-3.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-200 font-bold text-sm hover:border-cyan-400 hover:text-white transition-all flex items-center gap-2"

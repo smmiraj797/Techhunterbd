@@ -33,9 +33,9 @@ export const products: Product[] = [
     shortDescription:
       'Galaxy AI-powered flagship with S Pen, 200MP camera, and titanium frame.',
     description:
-      'The Samsung Galaxy S25 Ultra redefines mobile excellence with its Snapdragon 8 Elite processor, stunning 6.9" Dynamic AMOLED 2X display, and a pro-grade 200MP camera system. Built with a durable titanium frame and powered by Galaxy AI for smarter productivity and creativity.',
+      'The Samsung Galaxy S25 Ultra redefines mobile excellence with its Snapdragon 8 Elite processor, stunning 6.9-inch Dynamic AMOLED 2X display, and a pro-grade 200MP camera system. Built with a durable titanium frame and powered by Galaxy AI for smarter productivity and creativity.',
     specs: {
-      Display: '6.9" Dynamic AMOLED 2X, 3120×1440, 120Hz LTPO',
+      Display: '6.9-inch Dynamic AMOLED 2X, 3120×1440, 120Hz LTPO',
       Processor: 'Snapdragon 8 Elite for Galaxy',
       RAM: '12GB',
       Storage: '256GB',
@@ -86,9 +86,9 @@ export const products: Product[] = [
     shortDescription:
       'Apple Intelligence, A18 Pro chip, 48MP Fusion camera with 5x optical zoom.',
     description:
-      'The iPhone 16 Pro Max features the powerful A18 Pro chip, a stunning 6.9-inch Super Retina XDR display, and a revolutionary 48MP camera system with a 5x Telephoto lens. With Apple Intelligence built in and an all-day battery life, it's the most advanced iPhone ever.',
+      'The iPhone 16 Pro Max features the powerful A18 Pro chip, a stunning 6.9-inch Super Retina XDR display, and a revolutionary 48MP camera system with a 5x Telephoto lens. With Apple Intelligence built in and an all-day battery life, it\'s the most advanced iPhone ever.',
     specs: {
-      Display: '6.9" Super Retina XDR OLED, 2868×1320, 120Hz ProMotion',
+      Display: '6.9-inch Super Retina XDR OLED, 2868×1320, 120Hz ProMotion',
       Processor: 'A18 Pro chip',
       RAM: '8GB',
       Storage: '256GB',
@@ -141,7 +141,7 @@ export const products: Product[] = [
     description:
       'MacBook Air with M3 delivers incredible performance in an impossibly thin design. The 13.6-inch Liquid Retina display is brilliant, the M3 chip handles demanding workflows, and the up-to-18-hour battery life keeps you going all day.',
     specs: {
-      Display: '13.6" Liquid Retina, 2560×1664, 500 nits, P3 Wide Color',
+      Display: '13.6-inch Liquid Retina, 2560×1664, 500 nits, P3 Wide Color',
       Processor: 'Apple M3 (8-core CPU, 10-core GPU)',
       RAM: '16GB Unified Memory',
       Storage: '512GB SSD',
@@ -241,9 +241,9 @@ export const products: Product[] = [
     shortDescription:
       'Titanium Grade 4 smartwatch built for extreme outdoor adventures.',
     description:
-      'The Galaxy Watch Ultra is Samsung's most rugged smartwatch, featuring a titanium Grade 4 case, 3000-nit display, dual-frequency GPS, 10ATM water resistance, and up to 60 hours of battery life in power saving mode.',
+      'The Galaxy Watch Ultra is Samsung\'s most rugged smartwatch, featuring a titanium Grade 4 case, 3000-nit display, dual-frequency GPS, 10ATM water resistance, and up to 60 hours of battery life in power saving mode.',
     specs: {
-      Display: '1.47" Super AMOLED, 480×480, 3000 nits',
+      Display: '1.47-inch Super AMOLED, 480×480, 3000 nits',
       Processor: 'Exynos W1000',
       RAM: '2GB',
       Storage: '32GB',
@@ -289,11 +289,11 @@ export const products: Product[] = [
     rating: 4.6,
     reviewCount: 134,
     shortDescription:
-      'Intel i9-14900HX, RTX 4070 8GB, 16" 240Hz display for serious gamers.',
+      'Intel i9-14900HX, RTX 4070 8GB, 16-inch 240Hz display for serious gamers.',
     description:
-      'Dominate every game with the ASUS ROG Strix G16. Powered by Intel Core i9-14900HX and NVIDIA GeForce RTX 4070, it delivers desktop-class performance in a portable form. The 16" 240Hz QHD+ display and Dolby Atmos audio complete the immersive gaming experience.',
+      'Dominate every game with the ASUS ROG Strix G16. Powered by Intel Core i9-14900HX and NVIDIA GeForce RTX 4070, it delivers desktop-class performance in a portable form. The 16-inch 240Hz QHD+ display and Dolby Atmos audio complete the immersive gaming experience.',
     specs: {
-      Display: '16" QHD+ (2560×1600), 240Hz, IPS, G-Sync',
+      Display: '16-inch QHD+ (2560×1600), 240Hz, IPS, G-Sync',
       Processor: 'Intel Core i9-14900HX',
       GPU: 'NVIDIA GeForce RTX 4070 8GB GDDR6',
       RAM: '16GB DDR5 5600MHz',
@@ -482,7 +482,7 @@ export const products: Product[] = [
     shortDescription:
       'Ultra-compact 65W GaN charger with 3 ports — charge laptop and phone simultaneously.',
     description:
-      'The Baseus 65W GaN5 Pro charger uses GaN III technology for a compact design that's 50% smaller than traditional chargers. Equipped with 2 USB-C and 1 USB-A ports, it can charge a laptop, phone, and tablet all at once.',
+      'The Baseus 65W GaN5 Pro charger uses GaN III technology for a compact design that\'s 50% smaller than traditional chargers. Equipped with 2 USB-C and 1 USB-A ports, it can charge a laptop, phone, and tablet all at once.',
     specs: {
       'Total Output': '65W max',
       'Port 1 (USB-C)': '65W PD 3.0',
@@ -577,15 +577,15 @@ export const products: Product[] = [
     rating: 4.6,
     reviewCount: 76,
     shortDescription:
-      'Leica Summilux optics, Snapdragon 8 Gen 3, 1" sensor for pro photography.',
+      'Leica Summilux optics, Snapdragon 8 Gen 3, 1-inch sensor for pro photography.',
     description:
       'The Xiaomi 14 Ultra is the ultimate camera phone, co-engineered with Leica. Its 1-inch Sony LYT-900 sensor with f/1.63 Summilux lens captures professional-grade photos. Powered by Snapdragon 8 Gen 3 with 16GB RAM.',
     specs: {
-      Display: '6.73" 2K LTPO AMOLED, 3200×1440, 120Hz, 3000 nits',
+      Display: '6.73-inch 2K LTPO AMOLED, 3200×1440, 120Hz, 3000 nits',
       Processor: 'Snapdragon 8 Gen 3',
       RAM: '16GB LPDDR5X',
       Storage: '512GB UFS 4.0',
-      'Rear Camera': '50MP (1" LYT-900) + 50MP UW + 50MP 3.2x + 50MP 5x Tele',
+      'Rear Camera': '50MP (1-inch LYT-900) + 50MP UW + 50MP 3.2x + 50MP 5x Tele',
       'Front Camera': '32MP',
       Battery: '5000mAh, 90W wired, 50W wireless',
       OS: 'Android 14, HyperOS',
@@ -626,11 +626,11 @@ export const products: Product[] = [
     rating: 4.5,
     reviewCount: 54,
     shortDescription:
-      '14.6" Dynamic AMOLED 2X, S Pen included, Galaxy AI productivity powerhouse.',
+      '14.6-inch Dynamic AMOLED 2X, S Pen included, Galaxy AI productivity powerhouse.',
     description:
       'The Galaxy Tab S10 Ultra features a massive 14.6-inch Dynamic AMOLED 2X display, MediaTek Dimensity 9300+ processor, and Galaxy AI features for ultimate productivity. Includes S Pen for note-taking, drawing, and precision work.',
     specs: {
-      Display: '14.6" Dynamic AMOLED 2X, 2960×1848, 120Hz',
+      Display: '14.6-inch Dynamic AMOLED 2X, 2960×1848, 120Hz',
       Processor: 'MediaTek Dimensity 9300+',
       RAM: '12GB',
       Storage: '256GB (expandable via microSD)',
@@ -678,7 +678,7 @@ export const products: Product[] = [
     shortDescription:
       '49mm titanium case, 3000 nit display, precision dual-frequency GPS.',
     description:
-      'Apple Watch Ultra 2 is the most capable Apple Watch ever. With the S9 SiP, a brighter 3000-nit display, precision dual-frequency GPS, and up to 72 hours of battery life in Low Power Mode, it's built for endurance athletes and adventurers.',
+      'Apple Watch Ultra 2 is the most capable Apple Watch ever. With the S9 SiP, a brighter 3000-nit display, precision dual-frequency GPS, and up to 72 hours of battery life in Low Power Mode, it\'s built for endurance athletes and adventurers.',
     specs: {
       Display: '49mm, 3000 nits, Always-On Retina LTPO2 OLED',
       Chip: 'Apple S9 SiP with W3 chip',
@@ -779,7 +779,7 @@ export const products: Product[] = [
     shortDescription:
       'Ultra-lightweight 60g wireless gaming mouse with HERO 2 sensor, 32K DPI.',
     description:
-      'The Logitech G PRO X SUPERLIGHT 2 is an ultra-lightweight wireless gaming mouse weighing just 60g. Featuring the HERO 2 sensor with 32K DPI, LIGHTSPEED wireless, and up to 95 hours of battery life, it's the choice of esports professionals.',
+      'The Logitech G PRO X SUPERLIGHT 2 is an ultra-lightweight wireless gaming mouse weighing just 60g. Featuring the HERO 2 sensor with 32K DPI, LIGHTSPEED wireless, and up to 95 hours of battery life, it\'s the choice of esports professionals.',
     specs: {
       Sensor: 'HERO 2 (25,600 DPI)',
       'Max DPI': '32,000',
@@ -829,7 +829,7 @@ export const products: Product[] = [
     shortDescription:
       '16-core, 32-thread desktop processor with 5.7GHz boost for creators and gamers.',
     description:
-      'The AMD Ryzen 9 7950X is a 16-core, 32-thread desktop processor built on 5nm Zen 4 architecture. With a max boost clock of 5.7GHz, support for DDR5 and PCIe 5.0, it's the ultimate processor for content creation, gaming, and heavy multitasking.',
+      'The AMD Ryzen 9 7950X is a 16-core, 32-thread desktop processor built on 5nm Zen 4 architecture. With a max boost clock of 5.7GHz, support for DDR5 and PCIe 5.0, it\'s the ultimate processor for content creation, gaming, and heavy multitasking.',
     specs: {
       Cores: '16 Cores / 32 Threads',
       'Base Clock': '4.5 GHz',
@@ -875,7 +875,7 @@ export const products: Product[] = [
     shortDescription:
       'Ada Lovelace architecture with 12GB GDDR6X, DLSS 3.5, and ray tracing.',
     description:
-      'The NVIDIA GeForce RTX 4070 SUPER delivers incredible performance powered by Ada Lovelace architecture. With 12GB GDDR6X memory, 3rd-gen ray tracing cores, and DLSS 3.5, it's perfect for 1440p gaming and content creation at outstanding value.',
+      'The NVIDIA GeForce RTX 4070 SUPER delivers incredible performance powered by Ada Lovelace architecture. With 12GB GDDR6X memory, 3rd-gen ray tracing cores, and DLSS 3.5, it\'s perfect for 1440p gaming and content creation at outstanding value.',
     specs: {
       'CUDA Cores': '7168',
       'Boost Clock': '2475 MHz',
@@ -1017,18 +1017,18 @@ export const products: Product[] = [
     rating: 4.4,
     reviewCount: 43,
     shortDescription:
-      'Snapdragon X Elite, 13" OLED PixelSense, Copilot+ AI-powered tablet-laptop.',
+      'Snapdragon X Elite, 13-inch OLED PixelSense, Copilot+ AI-powered tablet-laptop.',
     description:
       'The Microsoft Surface Pro 10 with Snapdragon X Elite brings Copilot+ AI capabilities in a versatile tablet form factor. Featuring a stunning 13-inch OLED PixelSense display, up to 14 hours of battery life, and Wi-Fi 7 support.',
     specs: {
-      Display: '13" OLED PixelSense Flow, 2880×1920, 120Hz',
+      Display: '13-inch OLED PixelSense Flow, 2880×1920, 120Hz',
       Processor: 'Snapdragon X Elite (12-core)',
       RAM: '16GB LPDDR5x',
       Storage: '512GB SSD',
       Camera: '10MP rear + Windows Hello IR front',
       Battery: 'Up to 14 hours',
       Ports: '2x USB-C (USB 4.0), Surface Connect',
-      Wi-Fi: 'Wi-Fi 7 (802.11be)',
+      'Wi-Fi': 'Wi-Fi 7 (802.11be)',
       OS: 'Windows 11 with Copilot+',
       Weight: '895g (without keyboard)',
     },
